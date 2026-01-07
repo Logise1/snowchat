@@ -881,7 +881,6 @@ const SHOP_ITEMS = [
     { id: 'title_pro', name: 'Título: PRO Rider', type: 'title', cost: 1000, icon: 'fa-id-badge', color: 'bg-slate-900' },
     { id: 'avatar_wolf', name: 'Avatar Lobo', type: 'avatar', cost: 2000, icon: 'fa-dog', color: 'bg-blue-600' }
 ];
-
 window.nav = (page) => {
     // Hide all
     ['home', 'rank'].forEach(p => {
@@ -946,35 +945,7 @@ window.loadShopInRank = () => {
     });
 };
 
-window.loadShop = () => {
-    document.getElementById('shop-user-xp').innerText = state.userData.xp || 0;
-    const list = document.getElementById('shop-list');
-    list.innerHTML = '';
 
-    const owned = state.userData.items || [];
-
-    SHOP_ITEMS.forEach(item => {
-        const isOwned = owned.includes(item.id);
-        const canBuy = (state.userData.xp || 0) >= item.cost;
-
-        const card = document.createElement('div');
-        card.className = "bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col items-center gap-3 relative overflow-hidden";
-        card.innerHTML = `
-            <div class="w-12 h-12 ${item.color} rounded-full flex items-center justify-center text-white text-xl shadow-lg">
-                <i class="fa-solid ${item.icon}"></i>
-            </div>
-            <div class="text-center z-10">
-                <h4 class="font-bold text-slate-900 text-sm">${item.name}</h4>
-                <p class="text-xs text-slate-400 font-bold">${isOwned ? 'ADQUIRIDO' : item.cost + ' XP'}</p>
-            </div>
-            <button onclick="buyItem('${item.id}')" ${isOwned ? 'disabled' : ''} 
-                class="w-full py-2 rounded-xl text-xs font-bold transition-all ${isOwned ? 'bg-green-100 text-green-600' : (canBuy ? 'bg-slate-900 text-white hover:scale-105' : 'bg-slate-100 text-slate-300')}">
-                ${isOwned ? '<i class="fa-solid fa-check"></i> En Propiedad' : 'Comprar'}
-            </button>
-        `;
-        list.appendChild(card);
-    });
-};
 
 window.buyItem = async (itemId) => {
     const item = SHOP_ITEMS.find(i => i.id === itemId);
@@ -1001,7 +972,7 @@ window.buyItem = async (itemId) => {
             if (!state.userData.items) state.userData.items = [];
             state.userData.items.push(itemId);
 
-            loadShop(); // Refresh UI
+            loadShopInRank(); // Refresh UI
             alert("¡Compra realizada!");
 
         } catch (e) {
