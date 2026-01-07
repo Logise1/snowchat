@@ -19,8 +19,10 @@ const db = getFirestore(app);
 
 // --- STATE MANAGEMENT ---
 // --- STATE MANAGEMENT ---
+// --- STATE MANAGEMENT --- (partial view for context)
+// Ensure state.creator has recording flag
 const state = {
-    user: null,
+    user: null, // ...
     userData: null,
     gps: { lat: 0, lng: 0, alt: 0, speed: 0, acc: 0, heading: 0 },
     gpsWatchId: null,
@@ -28,10 +30,78 @@ const state = {
     activeTrack: null,
     detailMap: null,
     detailProximityInterval: null,
-    creator: { map: null, points: [], markers: [], polyline: null, active: false },
+    creator: { map: null, points: [], markers: [], polyline: null, active: false, recording: false },
     run: { active: false, track: null, startTime: 0, nextIdx: 0, timer: null, map: null },
-    voice: { active: false, recognition: null, speaking: false }
+    voice: { active: false, recognition: null, speaking: false },
+    voiceChat: { localStream: null, connections: {}, active: false, unsubSignaling: null }
 };
+
+// ...
+
+// --- GPS SYSTEM ---
+function startGPS() {
+    if (navigator.geolocation) {
+        state.gpsWatchId = navigator.geolocation.watchPosition(pos => {
+            state.gps = {
+                lat: pos.coords.latitude,
+                lng: pos.coords.longitude,
+                alt: pos.coords.altitude || 0,
+                speed: pos.coords.speed || 0,
+                acc: pos.coords.accuracy,
+                heading: pos.coords.heading || 0
+            };
+            if (state.run.active) updateRunLoop();
+            if (state.creator.recording) updateCreatorRecording();
+        }, (err) => {
+            console.error("GPS Error", err);
+        }, { enableHighAccuracy: true, maximumAge: 0 });
+    }
+}
+// ...
+
+// --- CREATOR RECORDING LOGIC ---
+window.toggleCreatorRecord = () => {
+    const btn = document.getElementById('btn-record-track');
+
+    if (state.creator.recording) {
+        // Stop
+        state.creator.recording = false;
+        btn.classList.remove('bg-red-500', 'text-white', 'border-transparent', 'shadow-lg', 'animate-pulse');
+        btn.classList.add('border-dashed', 'border-slate-300', 'text-slate-400');
+        btn.innerHTML = '<i class="fa-solid fa-circle text-xs"></i> <span>Grabar Recorrido (GPS)</span>';
+    } else {
+        // Start
+        if (!state.gps.lat) return alert("Esperando señal GPS...");
+
+        state.creator.recording = true;
+        btn.classList.remove('border-dashed', 'border-slate-300', 'text-slate-400');
+        btn.classList.add('bg-red-500', 'text-white', 'border-transparent', 'shadow-lg', 'animate-pulse');
+        btn.innerHTML = '<i class="fa-solid fa-circle-stop text-lg"></i> <span>DETENER GRABACIÓN</span>';
+
+        // Add first point immediately
+        addCreatorPoint(state.gps);
+    }
+};
+
+function updateCreatorRecording() {
+    if (!state.creator.recording) return;
+
+    const lastPt = state.creator.points[state.creator.points.length - 1];
+    if (!lastPt) {
+        addCreatorPoint(state.gps);
+        return;
+    }
+
+    // Check distance (min 10 meters to avoid noise)
+    const dist = getDist(lastPt, state.gps);
+    if (dist > 10) {
+        addCreatorPoint(state.gps);
+        // Center map
+        state.creator.map.setView([state.gps.lat, state.gps.lng]);
+    }
+}
+
+// ... existing addCreatorPoint ...
 
 // --- AUTHENTICATION ---
 window.handleAuth = async (type) => {
@@ -143,22 +213,7 @@ async function loadProfile() {
 }
 
 // --- GPS SYSTEM ---
-function startGPS() {
-    if (navigator.geolocation) {
-        state.gpsWatchId = navigator.geolocation.watchPosition(pos => {
-            state.gps = {
-                lat: pos.coords.latitude,
-                lng: pos.coords.longitude,
-                alt: pos.coords.altitude || 0,
-                speed: pos.coords.speed || 0,
-                acc: pos.coords.accuracy
-            };
-            if (state.run.active) updateRunLoop();
-        }, (err) => {
-            console.error("GPS Error", err);
-        }, { enableHighAccuracy: true, maximumAge: 0 });
-    }
-}
+
 // --- VOICE CONTROL SYSTEM ---
 function initVoiceControl() {
     if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
@@ -277,9 +332,10 @@ function speakStatus() {
 window.refreshTracks = async () => {
     const feed = document.getElementById('track-feed');
     feed.innerHTML = `
-        <div class="flex flex-col items-center justify-center py-8 text-slate-400">
-            <div class="loader-ring border-slate-200 border-t-blue-500 w-8 h-8 mb-2"></div>
-            <span class="text-xs font-bold">Buscando pistas...</span>
+        <div class="flex flex-col gap-3">
+            <div class="h-20 rounded-2xl shimmer"></div>
+            <div class="h-20 rounded-2xl shimmer"></div>
+            <div class="h-20 rounded-2xl shimmer"></div>
         </div>`;
 
     try {

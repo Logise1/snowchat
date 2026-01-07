@@ -402,3 +402,58 @@ body {
 .voice-minimized #voice-controls {
     display: none;
 }
+
+/* === SHIMMER / SKELETON ANIMATION === */
+@keyframes shimmer-move {
+    0% {
+        background-position: 200% 0;
+    }
+
+    100% {
+        background-position: -200% 0;
+    }
+}
+
+.shimmer {
+    position: relative;
+    overflow: hidden;
+    background-color: #f1f5f9;
+    /* Slate 100 as base */
+}
+
+.shimmer::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    transform: skewX(-20deg);
+    /* The / shape effect */
+    background: linear-gradient(90deg,
+            transparent 40%,
+            rgba(255, 255, 255, 0.7) 50%,
+            /* Bright band */
+            transparent 60%);
+    background-size: 200% 100%;
+    animation: shimmer-move 1.5s infinite linear;
+}
+
+/* Dark mode override for voice overlay if needed (or HUD) */
+.dark-shimmer .shimmer {
+    background-color: #1e293b;
+}
+
+.dark-shimmer .shimmer::after {
+    background: linear-gradient(90deg,
+            transparent 40%,
+            rgba(255, 255, 255, 0.1) 50%,
+            transparent 60%);
+}
+
+/* === UTILITIES UPDATE for "Not Smooth" / Hard Edge Feel request === */
+/* If the user specifically meant a "slash" that isn't a gradient but a hard line: */
+.shimmer-slash::after {
+    background: linear-gradient(90deg,
+            transparent 45%,
+            rgba(255, 255, 255, 0.6) 45%,
+            rgba(255, 255, 255, 0.6) 55%,
+            transparent 55%) !important;
+}
