@@ -1185,10 +1185,10 @@ async function initVoiceConnection() {
     joinVoicePresence();
     listenForMessages();
 
-    // Default Mic Off
-    setMicState(false);
+    // Auto-Start Mic (Always On)
+    setMicState(true);
 
-    processVoiceSystemMessage("Canal de Voz Conectado");
+    processVoiceSystemMessage("Canal de Voz Abierto");
 }
 
 function listenForMessages() {
@@ -1275,7 +1275,7 @@ async function setMicState(isOpen) {
                 }
             };
 
-            state.voiceChat.recorder.start(1000);
+            state.voiceChat.recorder.start(500);
 
             // UI ON
             if (btnInner) {

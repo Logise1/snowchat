@@ -138,7 +138,7 @@
                         <div class="voice-header" id="voice-header">
                             <div class="flex items-center gap-2">
                                 <div class="w-2 h-2 rounded-full bg-orange-500 animate-pulse"></div>
-                                <span class="font-bold text-white text-sm tracking-wide">WALKIE TALKIE</span>
+                                <span class="font-bold text-white text-sm tracking-wide">CANAL ABIERTO</span>
                             </div>
                             <button onclick="minimizeVoice()" class="text-slate-400 hover:text-white transition-colors">
                                 <i class="fa-solid fa-minus"></i>
@@ -149,19 +149,21 @@
                             <!-- Users injected here -->
                         </div>
 
-                        <!-- PTT Button -->
+                        <!-- Open Mic Toggle -->
                         <div class="flex flex-col items-center justify-center gap-2 w-full">
-                            <button id="ptt-btn" onmousedown="startPTT(event)" onmouseup="stopPTT(event)"
-                                onmouseleave="stopPTT(event)" ontouchstart="startPTT(event)" ontouchend="stopPTT(event)"
-                                class="w-24 h-24 rounded-full bg-slate-700 p-2 shadow-inner border border-slate-600 active:scale-95 transition-all">
-                                <div id="ptt-btn-inner"
-                                    class="w-full h-full rounded-full bg-slate-600 flex items-center justify-center border-4 border-slate-700 shadow-2xl transition-all">
-                                    <i class="fa-solid fa-microphone text-3xl text-slate-300"></i>
+                            <button id="mic-toggle-btn" onclick="toggleMic()"
+                                class="w-24 h-24 rounded-full bg-slate-800 p-2 shadow-inner border border-slate-700 active:scale-95 transition-all">
+                                <div id="mic-btn-inner"
+                                    class="w-full h-full rounded-full bg-slate-700 flex items-center justify-center border-4 border-slate-600 shadow-2xl transition-all relative overflow-hidden">
+                                    <div id="mic-wave"
+                                        class="absolute inset-0 bg-green-500 opacity-0 transition-opacity"></div>
+                                    <i id="mic-icon"
+                                        class="fa-solid fa-microphone-slash text-3xl text-slate-400 relative z-10 transition-colors"></i>
                                 </div>
                             </button>
-                            <p id="ptt-status"
-                                class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-2 animate-pulse">
-                                Mantén para hablar</p>
+                            <p id="mic-status"
+                                class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-2">
+                                Connecting...</p>
                         </div>
 
                         <div id="voice-controls" class="mt-4 pt-4 border-t border-white/10 w-full">
