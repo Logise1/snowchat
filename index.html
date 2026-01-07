@@ -265,6 +265,105 @@
                 </div>
             </div>
 
+            <!-- WEATHER PAGE -->
+            <div id="page-weather"
+                class="hidden p-6 pb-24 animate-slide-up flex flex-col gap-6 h-[calc(100vh-80px)] overflow-y-auto no-scrollbar">
+
+                <div class="flex items-center justify-between">
+                    <h2 class="text-3xl font-black text-slate-900">Tiempo <span class="text-blue-500">Sierra</span></h2>
+                    <button onclick="loadWeatherPage()"
+                        class="w-8 h-8 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center hover:bg-slate-200 hover:text-blue-600 transition">
+                        <i class="fa-solid fa-rotate-right"></i>
+                    </button>
+                </div>
+
+                <!-- Weather Card -->
+                <div id="weather-card"
+                    class="bg-gradient-to-br from-blue-500 to-blue-700 rounded-[2rem] p-6 text-white shadow-xl shadow-blue-200 relative overflow-hidden">
+                    <div
+                        class="absolute top-0 right-0 w-32 h-32 bg-white opacity-10 rounded-full blur-2xl transform translate-x-10 -translate-y-10">
+                    </div>
+
+                    <div class="relative z-10">
+                        <div class="flex justify-between items-start mb-4">
+                            <div>
+                                <p class="text-blue-100 text-xs font-bold uppercase tracking-wider mb-1">Pradollano</p>
+                                <h3 id="weather-temp" class="text-5xl font-black tracking-tighter">--°</h3>
+                            </div>
+                            <div class="text-right">
+                                <i id="weather-icon" class="fa-solid fa-cloud text-4xl text-blue-100"></i>
+                            </div>
+                        </div>
+
+                        <p id="weather-desc" class="text-blue-50 font-medium text-sm leading-relaxed mb-6">Cargando
+                            previsión...</p>
+
+                        <div class="grid grid-cols-3 gap-2 border-t border-white/10 pt-4">
+                            <div class="text-center">
+                                <i class="fa-solid fa-wind text-blue-200 text-xs mb-1"></i>
+                                <span id="weather-wind" class="block font-bold text-sm">--</span>
+                            </div>
+                            <div class="text-center border-l border-white/10">
+                                <i class="fa-solid fa-snowflake text-blue-200 text-xs mb-1"></i>
+                                <span id="weather-snow" class="block font-bold text-sm">--</span>
+                            </div>
+                            <div class="text-center border-l border-white/10">
+                                <i class="fa-solid fa-eye text-blue-200 text-xs mb-1"></i>
+                                <span id="weather-vis" class="block font-bold text-sm">--</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Resort Status -->
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                        <p class="text-slate-400 text-[10px] font-bold uppercase tracking-wider mb-1">Pistas Abiertas
+                        </p>
+                        <div class="flex items-baseline gap-1">
+                            <span id="resort-tracks" class="text-2xl font-black text-slate-900">--</span>
+                            <span class="text-xs text-slate-400 font-bold">/ --</span>
+                        </div>
+                    </div>
+                    <div class="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                        <p class="text-slate-400 text-[10px] font-bold uppercase tracking-wider mb-1">Km Esquiables</p>
+                        <div class="flex items-baseline gap-1">
+                            <span id="resort-km" class="text-2xl font-black text-slate-900">--</span>
+                            <span class="text-xs text-slate-400 font-bold">km</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Detailed Forecast -->
+                <div>
+                    <h3 class="font-black text-slate-900 text-lg mb-3">Previsión <span
+                            class="text-slate-400 text-sm font-bold uppercase ml-2">Próximos Días</span></h3>
+                    <div id="forecast-list" class="space-y-3">
+                        <!-- Injected JS -->
+                    </div>
+                </div>
+
+                <!-- Slopes List -->
+                <div>
+                    <div class="flex items-center justify-between mb-3 px-1">
+                        <h3 class="font-black text-slate-900 text-lg">Estado de Pistas</h3>
+                        <span id="slopes-total-status"
+                            class="text-xs font-bold text-slate-400 bg-slate-100 px-2 py-1 rounded-lg">Cargando...</span>
+                    </div>
+
+                    <div class="relative mb-4">
+                        <i
+                            class="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                        <input type="text" id="slope-search" onkeyup="filterSlopes()" placeholder="Buscar pista..."
+                            class="w-full bg-slate-50 border border-slate-100 rounded-xl py-3 pl-10 pr-4 font-bold text-slate-700 outline-none focus:ring-2 ring-blue-500 transition-all">
+                    </div>
+
+                    <div id="slopes-list" class="space-y-4 pb-12">
+                        <!-- Zones injected here -->
+                    </div>
+                </div>
+            </div>
+
         </main>
 
         <!-- BOTTOM NAV -->
@@ -274,6 +373,12 @@
                 class="nav-item active flex-1 flex flex-col items-center gap-1 p-2 text-blue-600 transition-all transform hover:scale-110">
                 <i class="fa-solid fa-house text-xl"></i>
                 <span class="text-[10px] font-bold">Inicio</span>
+            </button>
+            <div class="w-px h-8 bg-slate-100"></div>
+            <button onclick="nav('weather')"
+                class="nav-item flex-1 flex flex-col items-center gap-1 p-2 text-slate-300 hover:text-blue-500 transition-all transform hover:scale-110">
+                <i class="fa-solid fa-cloud-sun text-xl"></i>
+                <span class="text-[10px] font-bold">Tiempo</span>
             </button>
             <div class="w-px h-8 bg-slate-100"></div>
             <button onclick="nav('rank')"

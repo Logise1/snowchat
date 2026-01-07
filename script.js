@@ -882,7 +882,7 @@ window.closeResults = () => {
 
 window.nav = (page) => {
     // Hide all
-    ['home', 'rank', 'profile'].forEach(p => {
+    ['home', 'rank', 'profile', 'weather'].forEach(p => {
         const el = document.getElementById(`page-${p}`);
         if (el) el.classList.add('hidden');
     });
@@ -909,6 +909,7 @@ window.nav = (page) => {
 
     if (page === 'rank') loadLeaderboard('xp');
     if (page === 'profile') loadProfilePage();
+    if (page === 'weather') loadWeatherPage();
 };
 
 window.loadProfilePage = () => {
@@ -1505,4 +1506,196 @@ async function createPeerConnection(peerId, initiator) {
     }
 
     return pc;
+}
+
+// --- WEATHER LOGIC ---
+window.loadWeatherPage = async () => {
+    // Show loading state if needed, or just keep previous data
+    const tempEl = document.getElementById('weather-temp');
+    if (tempEl.innerText === '--°') {
+        document.getElementById('weather-desc').innerText = "Conectando con Sierra Nevada...";
+    }
+
+    try {
+        const res = await fetch('https://api.codetabs.com/v1/proxy/?quest=https://umb.sierranevada.es/umbraco/api/parte/previsiones?culture=es');
+        const data = await res.json();
+
+        if (!data || !data.Partes || !data.Partes.length) throw new Error("Datos inválidos");
+
+        const parte = data.Partes.find(p => p.Name === 'Previsión') || data.Partes[0];
+        const snowData = parte.Parte.partenieve;
+
+        const meteo = snowData.meteorologia.paginas.pagina;
+        const current = meteo[0]; // Today
+        const forecast = meteo[1]; // Future
+
+        // 1. Current Weather (Pradollano)
+        document.getElementById('weather-temp').innerText = current.temperaturapradollano + "°";
+        document.getElementById('weather-desc').innerText = current.textoprevision0dia || "Sin previsión detallada.";
+
+        document.getElementById('weather-wind').innerText = (current.vientopradollano || "0").trim() + " km/h";
+        document.getElementById('weather-vis').innerText = (current.visibilidadpradollano || "N/A").trim();
+        document.getElementById('weather-snow').innerText = (snowData.nieve.calidadnieve || "N/A").trim();
+
+        // Icon based on sky
+        const sky = (current.estadocielopradollano || "").toLowerCase();
+        let icon = "fa-cloud";
+        if (sky.includes("despejado") || sky.includes("sol")) icon = "fa-sun";
+        if (sky.includes("parcial") || sky.includes("nuboso")) icon = "fa-cloud-sun";
+        if (sky.includes("lluvia")) icon = "fa-cloud-rain";
+        if (sky.includes("nieve")) icon = "fa-snowflake";
+        document.getElementById('weather-icon').className = `fa-solid ${icon} text-4xl text-blue-100`;
+
+        // 2. Resort Status
+        const pistes = snowData.pistas;
+        document.getElementById('resort-tracks').innerText = pistes["@totalpistasabiertas"] || pistes["@abiertas"] || "0";
+        document.getElementById('resort-km').innerText = (pistes["@kilometrosesquiables"] || "0").replace(' Km', '');
+
+        // 3. Forecast
+        const list = document.getElementById('forecast-list');
+        list.innerHTML = '';
+
+        // Day +1
+        addForecastCard(list, "Mañana", forecast.estadocieloprevision1dia, forecast.textoprevision1dia);
+        // Day +2
+        addForecastCard(list, "Pasado Mañana", forecast.estadocieloprevision2dia, forecast.textoprevision2dia);
+        // Day +3
+        addForecastCard(list, "+3 Días", forecast.estadocieloprevision3dia, forecast.textoprevision3dia);
+
+        // 4. Slopes Status
+        renderSlopes(snowData.pistas);
+
+    } catch (e) {
+        console.error("Weather Error", e);
+        document.getElementById('weather-desc').innerText = "Error cargando la previsión. Inténtalo de nuevo.";
+    }
+};
+
+function renderSlopes(pistasData) {
+    const list = document.getElementById('slopes-list');
+    list.innerHTML = '';
+
+    let totalOpen = 0;
+    let totalTotal = 0;
+
+    let pages = pistasData.paginas.pagina;
+    if (!Array.isArray(pages)) pages = [pages];
+
+    pages.forEach(page => {
+        let zonas = page.zona;
+        if (!Array.isArray(zonas)) zonas = [zonas];
+
+        zonas.forEach(zona => {
+            const zonaName = zona["@nombre"];
+            let tracksHtml = '';
+            let zoneOpen = 0;
+            let zoneTotal = 0;
+
+            Object.keys(zona).forEach(key => {
+                if (key.startsWith('@') || key.startsWith('#')) return;
+
+                const track = zona[key];
+                if (!track["@nombre"]) return; // Skip invalid
+
+                zoneTotal++;
+
+                // State Normalization
+                const stateRaw = (track["@estado"] || "").toString().toLowerCase();
+                const isOpen = stateRaw === 'true' || stateRaw === 'abierto' || stateRaw === 'parcial';
+                if (isOpen) zoneOpen++;
+
+                // Difficulty Color
+                const diff = (track["@dificultad"] || "").trim().toUpperCase();
+                let colorClass = 'bg-slate-400';
+                if (diff.includes('V')) colorClass = 'bg-green-500';
+                else if (diff.includes('A')) colorClass = 'bg-blue-500';
+                else if (diff.includes('R')) colorClass = 'bg-red-500';
+                else if (diff.includes('N')) colorClass = 'bg-black';
+                else if (diff.includes('S')) colorClass = 'bg-orange-500'; // Sulayr/Freestyle
+
+                // Status Icon
+                const icon = isOpen ? '<i class="fa-solid fa-lock-open text-green-500"></i>' : '<i class="fa-solid fa-lock text-red-300"></i>';
+                const opacity = isOpen ? 'opacity-100' : 'opacity-60 grayscale';
+
+                // Subtracks check (if object has nested objects with @nombre)
+                // For now simplifying to just main track as requested "individual info" usually means the named entities.
+
+                tracksHtml += `
+                    <div class="flex items-center justify-between p-3 bg-white border border-slate-50 rounded-xl mb-2 slope-item ${opacity}" data-name="${track["@nombre"].toLowerCase()}">
+                        <div class="flex items-center gap-3">
+                            <div class="w-3 h-3 rounded-full ${colorClass} shadow-sm shrink-0"></div>
+                            <span class="font-bold text-slate-700 text-sm truncate max-w-[180px]">${track["@nombre"]}</span>
+                        </div>
+                        <div class="text-sm">
+                            ${icon}
+                        </div>
+                    </div>
+                `;
+            });
+
+            totalOpen += zoneOpen;
+            totalTotal += zoneTotal;
+
+            if (tracksHtml) {
+                const zoneHtml = `
+                    <div class="slope-zone">
+                        <div class="flex items-center justify-between mb-2 px-1 top-0 bg-white/95 backdrop-blur z-10 py-2 sticky">
+                            <h4 class="font-bold text-slate-900 uppercase tracking-wider text-xs">${zonaName}</h4>
+                            <span class="text-[10px] font-bold text-slate-400">${zoneOpen}/${zoneTotal}</span>
+                        </div>
+                        <div class="pl-2 border-l-2 border-slate-100">
+                            ${tracksHtml}
+                        </div>
+                    </div>
+                `;
+                list.insertAdjacentHTML('beforeend', zoneHtml);
+            }
+        });
+    });
+
+    document.getElementById('slopes-total-status').innerText = `${totalOpen} / ${totalTotal} Abiertas`;
+}
+
+window.filterSlopes = () => {
+    const term = document.getElementById('slope-search').value.toLowerCase();
+    const items = document.querySelectorAll('.slope-item');
+
+    items.forEach(item => {
+        const name = item.getAttribute('data-name');
+        if (name.includes(term)) {
+            item.style.display = 'flex';
+        } else {
+            item.style.display = 'none';
+        }
+    });
+
+    // Hide empty zones
+    document.querySelectorAll('.slope-zone').forEach(zone => {
+        const visibleChildren = zone.querySelectorAll('.slope-item[style="display: flex;"], .slope-item:not([style*="display: none"])');
+        zone.style.display = visibleChildren.length > 0 ? 'block' : 'none';
+    });
+};
+
+function addForecastCard(container, title, sky, text) {
+    if (!sky && !text) return;
+
+    let icon = "fa-cloud";
+    const s = (sky || "").toLowerCase();
+    if (s.includes("despejado")) icon = "fa-sun";
+    else if (s.includes("parcial")) icon = "fa-cloud-sun";
+    else if (s.includes("nieve")) icon = "fa-snowflake";
+    else if (s.includes("lluvia")) icon = "fa-cloud-rain";
+
+    const div = document.createElement('div');
+    div.className = "bg-white p-4 rounded-2xl border border-slate-100 shadow-sm";
+    div.innerHTML = `
+        <div class="flex items-center justify-between mb-2">
+            <h4 class="font-bold text-slate-900">${title}</h4>
+            <i class="fa-solid ${icon} text-blue-500"></i>
+        </div>
+        <div class="text-xs text-slate-500 leading-relaxed">
+            ${text || "Sin datos."}
+        </div>
+    `;
+    container.appendChild(div);
 }
