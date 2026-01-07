@@ -1147,12 +1147,12 @@ function calcTotalDist(pts) {
     return d / 1000;
 }
 
-// --- WALKIE TALKIE (PTT) SYSTEM ---
-// Protocol: Firestore Base64 Audio Messages (Async/Store-and-Forward)
-// This replaces WebRTC to avoid NAT/Stun issues and provide a reliable "Radio" feel.
+// --- OPEN MIC (STREAMING) SYSTEM ---
+// Protocol: Stream over Firestore (Pseudo Real-Time)
 
 state.voiceChat = {
     active: false,
+    micOpen: false,
     recorder: null,
     chunks: [],
     unsubMessages: null,
@@ -1165,186 +1165,186 @@ window.toggleGlobalVoice = async () => {
     if (state.voiceChat.active) {
         leaveVoiceChat();
     } else {
-        try {
-            // Request Mic Permission (and check support)
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            // Stop immediately, we just wanted permission
-            stream.getTracks().forEach(t => t.stop());
-
-            state.voiceChat.active = true;
-            document.getElementById('voice-overlay').classList.remove('hidden');
-
-            // UI Feedback
-            const btn = document.getElementById('btn-global-voice');
-            btn.classList.remove('bg-white', 'text-slate-400');
-            btn.classList.add('bg-orange-500', 'text-white', 'pulse-btn');
-            btn.innerHTML = '<i class="fa-solid fa-walkie-talkie"></i>';
-
-            initDraggable('voice-overlay', 'voice-header');
-            initHoldToLeave();
-
-            // Join Presence & Listen
-            joinVoicePresence();
-            listenForMessages();
-
-            // Notify
-            processVoiceSystemMessage("Walkie Talkie Conectado");
-
-        } catch (e) {
-            console.error(e);
-            alert("Acceso al micrófono denegado. No puedes usar el Walkie Talkie.");
-        }
+        await initVoiceConnection();
     }
 };
 
-window.minimizeVoice = () => {
-    document.getElementById('voice-overlay').classList.toggle('voice-minimized');
-};
+async function initVoiceConnection() {
+    state.voiceChat.active = true;
+    document.getElementById('voice-overlay').classList.remove('hidden');
 
-function leaveVoiceChat() {
-    state.voiceChat.active = false;
-    if (state.voiceChat.unsubMessages) state.voiceChat.unsubMessages();
-    if (state.voiceChat.unsubPresence) state.voiceChat.unsubPresence();
-
-    // Remove presence
-    try {
-        if (state.user) deleteDoc(doc(db, "voice_presence", state.user.uid));
-    } catch (e) { }
-
-    // UI Reset
+    // UI Feedback
     const btn = document.getElementById('btn-global-voice');
-    if (btn) {
-        btn.classList.remove('bg-orange-500', 'text-white', 'pulse-btn');
-        btn.classList.add('bg-white', 'text-slate-400');
-        btn.innerHTML = '<i class="fa-solid fa-microphone-slash"></i>';
-    }
-    document.getElementById('voice-overlay').classList.add('hidden');
-    processVoiceSystemMessage("Radio desconectada");
+    btn.classList.remove('bg-white', 'text-slate-400');
+    btn.classList.add('bg-indigo-500', 'text-white', 'pulse-btn');
+    btn.innerHTML = '<i class="fa-solid fa-headset"></i>';
+
+    initDraggable('voice-overlay', 'voice-header');
+    initHoldToLeave();
+
+    joinVoicePresence();
+    listenForMessages();
+
+    // Default Mic Off
+    setMicState(false);
+
+    processVoiceSystemMessage("Canal de Voz Conectado");
 }
 
-async function joinVoicePresence() {
-    if (!state.user) return;
-    const ref = doc(db, "voice_presence", state.user.uid);
-    await setDoc(ref, {
-        username: state.userData.username,
-        onlineAt: serverTimestamp(),
-        uid: state.user.uid
-    });
+function listenForMessages() {
+    // Listen for stream (latest 8)
+    const q = query(
+        collection(db, "voice_stream"),
+        orderBy('ts', 'desc'),
+        limit(8)
+    );
 
-    // Listen for others - clean up old presence if needed could be done by Cloud Functions
-    // For now just listen
-    state.voiceChat.unsubPresence = onSnapshot(collection(db, "voice_presence"), (snap) => {
-        const users = snap.docs.map(d => d.data());
-        // Filter out stale users? (Optional optimization)
-        renderVoiceUsers(users);
+    let initialLoad = true;
+
+    state.voiceChat.unsubMessages = onSnapshot(q, (snap) => {
+        if (initialLoad) {
+            initialLoad = false;
+            return;
+        }
+
+        snap.docChanges().forEach(change => {
+            if (change.type === 'added') {
+                const d = change.doc.data();
+                if (d.uid === state.user.uid) return;
+
+                // Simpler queue, play all valid
+                queueAudio(d.audio, d.sender);
+            }
+        });
     });
 }
 
-function renderVoiceUsers(users) {
-    const list = document.getElementById('voice-list-container');
-    if (!list) return;
-    list.innerHTML = '';
+function queueAudio(base64, sender) {
+    const audio = new Audio(base64);
+    audio.senderName = sender;
+    state.voiceChat.audioQueue.push(audio);
+    processQueue();
+}
 
-    // Sort me first
-    users.sort((a, b) => (a.uid === state.user.uid ? -1 : 1));
+function processQueue() {
+    if (state.voiceChat.isPlaying || state.voiceChat.audioQueue.length === 0) return;
+    state.voiceChat.isPlaying = true;
+    const audio = state.voiceChat.audioQueue.shift();
 
-    if (users.length === 0) {
-        list.innerHTML = '<div class="text-xs text-slate-500 text-center py-2">Canal Vacío</div>';
-        return;
-    }
+    // UI: Who is talking
+    // We could add a visual indicator here
 
-    users.forEach(u => {
-        const el = document.createElement('div');
-        el.className = "flex items-center gap-2 mb-2 animate-slide-up";
-        const isMe = u.uid === state.user.uid;
-        el.innerHTML = `
-            <div class="w-2 h-2 rounded-full ${isMe ? 'bg-green-400' : 'bg-orange-400'} shadow-[0_0_5px_rgba(34,197,94,0.5)]"></div>
-            <span class="${isMe ? 'text-white' : 'text-slate-300'} text-xs font-bold truncate">${u.username} ${isMe ? '(Tú)' : ''}</span>
-         `;
-        list.appendChild(el);
+    audio.play().catch(e => {
+        state.voiceChat.isPlaying = false;
+        processQueue();
+    }).finally(() => {
+        audio.onended = () => {
+            state.voiceChat.isPlaying = false;
+            processQueue();
+        };
     });
 }
 
 // --- PTT LOGIC ---
-window.startPTT = async (e) => {
-    if (e && e.cancelable && e.type !== 'mousedown') e.preventDefault(); // allow default on mousedown for focus? NO.
-    // Prevent default on touch to avoid scrolling
-    if (e.type === 'touchstart') e.preventDefault();
-    if (e.type === 'mousedown') e.preventDefault();
+// --- OPEN MIC LOGIC ---
+window.toggleMic = async () => {
+    if (!state.voiceChat.active) return;
 
-    if (!state.voiceChat.active || state.voiceChat.recorder) return;
+    // Toggle
+    const newState = !state.voiceChat.micOpen;
+    await setMicState(newState);
+};
 
-    try {
-        playTone(600, 0.05, 'sine'); // Start Click
-        playTone(800, 0.05, 'sine', 0.05);
+async function setMicState(isOpen) {
+    state.voiceChat.micOpen = isOpen;
+    const btnInner = document.getElementById('mic-btn-inner');
+    const icon = document.getElementById('mic-icon');
+    const status = document.getElementById('mic-status');
+    const wave = document.getElementById('mic-wave');
 
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        state.voiceChat.recorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
-        state.voiceChat.chunks = [];
+    if (isOpen) {
+        // Start Recording
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            // Timeslice 1000ms for continuous streaming (1s latency)
+            state.voiceChat.recorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
 
-        state.voiceChat.recorder.ondataavailable = (e) => {
-            if (e.data.size > 0) state.voiceChat.chunks.push(e.data);
-        };
-
-        state.voiceChat.recorder.onstop = async () => {
-            const blob = new Blob(state.voiceChat.chunks, { type: 'audio/webm;codecs=opus' });
-
-            // Clean up stream
-            stream.getTracks().forEach(track => track.stop());
-            state.voiceChat.recorder = null;
-
-            // Prepare Upload
-            const reader = new FileReader();
-            reader.readAsDataURL(blob);
-            reader.onloadend = async () => {
-                const base64 = reader.result;
-                try {
-                    await addDoc(collection(db, "voice_messages"), {
-                        sender: state.userData.username,
-                        uid: state.user.uid,
-                        audio: base64,
-                        createdAt: serverTimestamp()
-                    });
-                    playTone(800, 0.05, 'sine'); // End Click
-                    playTone(400, 0.05, 'sine', 0.05);
-                } catch (e) {
-                    console.error("Error sending audio", e);
+            state.voiceChat.recorder.ondataavailable = async (e) => {
+                if (e.data.size > 0 && state.voiceChat.active && state.voiceChat.micOpen) {
+                    uploadAudioChunk(e.data);
                 }
             };
-        };
 
-        state.voiceChat.recorder.start();
+            state.voiceChat.recorder.start(1000);
 
-        // UI
-        const btnInner = document.getElementById('ptt-btn-inner');
-        const status = document.getElementById('ptt-status');
-        btnInner.classList.remove('bg-slate-600', 'border-slate-700');
-        btnInner.classList.add('bg-red-600', 'border-red-500', 'scale-110', 'shadow-[0_0_30px_rgba(239,68,68,0.6)]');
-        status.innerText = "TRANSMITIENDO...";
-        status.classList.add('text-red-400', 'animate-pulse');
-        status.classList.remove('text-slate-400');
+            // UI ON
+            if (btnInner) {
+                btnInner.classList.remove('bg-slate-700', 'border-slate-600');
+                btnInner.classList.add('bg-green-600', 'border-green-500', 'shadow-[0_0_30px_rgba(34,197,94,0.4)]');
+            }
+            if (icon) icon.className = "fa-solid fa-microphone text-3xl text-white relative z-10";
+            if (status) {
+                status.innerText = "TRANSMITIENDO VIVO";
+                status.classList.add('text-green-400', 'animate-pulse');
+            }
+            if (wave) {
+                wave.classList.remove('opacity-0');
+                wave.classList.add('opacity-50', 'animate-pulse');
+            }
 
-    } catch (e) {
-        console.error("PTT Error", e);
+            playTone(800, 0.1, 'sine');
+
+        } catch (e) {
+            console.error(e);
+            alert("Error al abrir micrófono. Verifica permisos.");
+            setMicState(false);
+        }
+
+    } else {
+        // Stop Recording
+        if (state.voiceChat.recorder && state.voiceChat.recorder.state !== 'inactive') {
+            try {
+                // Ensure tracks are stopped
+                state.voiceChat.recorder.stream.getTracks().forEach(t => t.stop());
+                state.voiceChat.recorder.stop();
+            } catch (e) { }
+            state.voiceChat.recorder = null;
+        }
+
+        // UI OFF
+        if (btnInner) {
+            btnInner.classList.add('bg-slate-700', 'border-slate-600');
+            btnInner.classList.remove('bg-green-600', 'border-green-500', 'shadow-[0_0_30px_rgba(34,197,94,0.4)]');
+        }
+        if (icon) icon.className = "fa-solid fa-microphone-slash text-3xl text-slate-400 relative z-10";
+        if (status) {
+            status.innerText = "MICROFONEADO";
+            status.classList.remove('text-green-400', 'animate-pulse');
+        }
+        if (wave) {
+            wave.classList.add('opacity-0');
+            wave.classList.remove('opacity-50', 'animate-pulse');
+        }
+
+        playTone(600, 0.1, 'sine');
     }
-};
+}
 
-window.stopPTT = (e) => {
-    if (e && e.cancelable) e.preventDefault();
-
-    if (state.voiceChat.recorder && state.voiceChat.recorder.state !== 'inactive') {
-        state.voiceChat.recorder.stop();
-
-        // UI Reset
-        const btnInner = document.getElementById('ptt-btn-inner');
-        const status = document.getElementById('ptt-status');
-        btnInner.classList.add('bg-slate-600', 'border-slate-700');
-        btnInner.classList.remove('bg-red-600', 'border-red-500', 'scale-110', 'shadow-[0_0_30px_rgba(239,68,68,0.6)]');
-        status.innerText = "MANTÉN PARA HABLAR";
-        status.classList.remove('text-red-400', 'animate-pulse');
-        status.classList.add('text-slate-400');
-    }
-};
+async function uploadAudioChunk(blob) {
+    const reader = new FileReader();
+    reader.readAsDataURL(blob);
+    reader.onloadend = async () => {
+        const base64 = reader.result;
+        // Fire and forget upload to Reduce Latency
+        addDoc(collection(db, "voice_stream"), {
+            sender: state.userData.username,
+            uid: state.user.uid,
+            audio: base64,
+            ts: serverTimestamp(),
+            expireAt: Date.now() + 60000
+        }).catch(e => console.error(e));
+    };
+}
 
 function listenForMessages() {
     // Listen for new messages
