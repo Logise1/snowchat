@@ -1074,25 +1074,7 @@ window.undoPoint = () => {
 }
 
 // --- NAVIGATION & LEADERBOARDS ---
-window.nav = (page) => {
-    if (page === 'home') {
-        document.getElementById('page-home').classList.remove('hidden');
-        document.getElementById('page-rank').classList.add('hidden');
-    } else {
-        document.getElementById('page-home').classList.add('hidden');
-        document.getElementById('page-rank').classList.remove('hidden');
-        loadLeaderboard('xp');
-    }
 
-    document.querySelectorAll('.nav-item').forEach(el => {
-        el.classList.remove('text-blue-600', 'active', 'scale-110');
-        el.classList.add('text-slate-300');
-        // Reset icon style
-    });
-    const cur = event.currentTarget;
-    cur.classList.add('text-blue-600', 'active', 'scale-110');
-    cur.classList.remove('text-slate-300');
-};
 
 window.loadLeaderboard = async (sort) => {
     const list = document.getElementById('leaderboard-list');
