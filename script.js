@@ -42,46 +42,26 @@ const state = {
 // ...
 
 // --- CREATOR RECORDING LOGIC ---
-window.toggleCreatorRecord = () => {
+// --- CREATOR RECORDING LOGIC ---
+window.addCurrentGPSPoint = () => {
     const btn = document.getElementById('btn-record-track');
 
-    if (state.creator.recording) {
-        // Stop
-        state.creator.recording = false;
-        btn.classList.remove('bg-red-500', 'text-white', 'border-transparent', 'shadow-lg', 'animate-pulse');
-        btn.classList.add('border-dashed', 'border-slate-300', 'text-slate-400');
-        btn.innerHTML = '<i class="fa-solid fa-circle text-xs"></i> <span>Grabar Recorrido (GPS)</span>';
-    } else {
-        // Start
-        if (!state.gps.lat) return alert("Esperando señal GPS...");
+    if (!state.gps.lat) return alert("Esperando señal GPS...");
 
-        state.creator.recording = true;
-        btn.classList.remove('border-dashed', 'border-slate-300', 'text-slate-400');
-        btn.classList.add('bg-red-500', 'text-white', 'border-transparent', 'shadow-lg', 'animate-pulse');
-        btn.innerHTML = '<i class="fa-solid fa-circle-stop text-lg"></i> <span>DETENER GRABACIÓN</span>';
+    // Visual Feedback
+    btn.classList.remove('border-slate-300', 'text-slate-400');
+    btn.classList.add('border-blue-500', 'text-blue-600', 'bg-blue-50');
+    setTimeout(() => {
+        btn.classList.add('border-slate-300', 'text-slate-400');
+        btn.classList.remove('border-blue-500', 'text-blue-600', 'bg-blue-50');
+    }, 300);
 
-        // Add first point immediately
-        addCreatorPoint(state.gps);
-    }
+    // Add Point
+    addCreatorPoint(state.gps);
+
+    // Center map
+    state.creator.map.setView([state.gps.lat, state.gps.lng]);
 };
-
-function updateCreatorRecording() {
-    if (!state.creator.recording) return;
-
-    const lastPt = state.creator.points[state.creator.points.length - 1];
-    if (!lastPt) {
-        addCreatorPoint(state.gps);
-        return;
-    }
-
-    // Check distance (min 10 meters to avoid noise)
-    const dist = getDist(lastPt, state.gps);
-    if (dist > 10) {
-        addCreatorPoint(state.gps);
-        // Center map
-        state.creator.map.setView([state.gps.lat, state.gps.lng]);
-    }
-}
 
 // ... existing addCreatorPoint ...
 
@@ -236,7 +216,6 @@ function startGPS() {
             lastTime = now;
 
             if (state.run.active) updateRunLoop();
-            if (state.creator.recording) updateCreatorRecording();
         }, (err) => {
             console.error("GPS Error", err);
         }, {
@@ -247,12 +226,43 @@ function startGPS() {
     }
 }
 
+// --- SYSTEM & WAKE LOCK ---
+let wakeLock = null;
+async function requestWakeLock() {
+    try {
+        if ('wakeLock' in navigator) {
+            wakeLock = await navigator.wakeLock.request('screen');
+        }
+    } catch (err) {
+        console.error(`${err.name}, ${err.message}`);
+    }
+}
+document.addEventListener('visibilitychange', async () => {
+    if (wakeLock !== null && document.visibilityState === 'visible') {
+        await requestWakeLock();
+    }
+});
+
+// Prevent Exit
+window.addEventListener('beforeunload', (e) => {
+    e.preventDefault();
+    e.returnValue = '';
+    return "Seguro que quieres salir?";
+});
+
+history.pushState(null, document.title, location.href);
+window.addEventListener('popstate', (event) => {
+    history.pushState(null, document.title, location.href);
+});
+
 // --- VOICE CONTROL SYSTEM ---
 function initVoiceControl() {
     if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
         console.log("Speech recognition not supported");
         return;
     }
+
+    requestWakeLock();
 
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     state.voice.recognition = new SpeechRecognition();
@@ -305,7 +315,7 @@ function updateVoiceUI(active) {
         btn.classList.remove('bg-white/5', 'text-slate-400');
     } else {
         waves.classList.add('hidden');
-        txt.innerText = "Dí 'Parar', 'Estado' o 'Velocidad'";
+        txt.innerText = "Dí 'Estado', 'Velocidad' o 'Personas'";
         txt.classList.remove('text-green-400');
         btn.classList.remove('bg-white', 'text-blue-900');
         btn.classList.add('bg-white/5', 'text-slate-400');
@@ -327,11 +337,9 @@ function processVoiceCommand(cmd) {
         }, 3000);
     }
 
-    if (cmd.includes('parar') || cmd.includes('terminar') || cmd.includes('abortar') || cmd.includes('stop')) {
-        speak("Deteniendo la carrera");
-        if (state.run.active) abortRun();
-    }
-    else if (cmd.includes('velocidad') || cmd.includes('rápido')) {
+    // Removed 'Parar' command as requested
+
+    if (cmd.includes('velocidad') || cmd.includes('rápido')) {
         const spd = Math.round(state.gps.speed * 3.6);
         speak(`Vas a ${spd} kilómetros por hora`);
     }
@@ -341,6 +349,26 @@ function processVoiceCommand(cmd) {
     else if (cmd.includes('hora') || cmd.includes('tiempo')) {
         const time = document.getElementById('hud-time').innerText;
         speak(`El tiempo es ${time}`);
+    }
+    else if (cmd.includes('personas') || cmd.includes('gente') || cmd.includes('quién hay') || cmd.includes('online')) {
+        speakPeople();
+    }
+}
+
+function speakPeople() {
+    if (!state.voiceChat.active) return speak("El chat de voz está desconectado.");
+
+    const rows = document.querySelectorAll('.voice-user-row span');
+    if (rows.length === 0) return speak("No hay nadie más conectado.");
+
+    let names = [];
+    rows.forEach(r => names.push(r.innerText.replace(" (Tú)", "")));
+    const uniqueNames = [...new Set(names)];
+
+    if (uniqueNames.length === 1 && uniqueNames[0] === state.userData.username) {
+        speak("Solo estás tú en el canal.");
+    } else {
+        speak(`En el chat están: ${uniqueNames.join(', ')}`);
     }
 }
 
@@ -629,6 +657,9 @@ function startRunLogic() {
     hud.classList.remove('hidden');
     document.getElementById('hud-next-point').innerText = "CP 1";
 
+    // Init Hold Button
+    initHoldToAbort();
+
     // Setup HUD Map
     setTimeout(() => {
         if (state.run.map) state.run.map.remove();
@@ -754,7 +785,13 @@ async function finishRun() {
     const finalTime = document.getElementById('hud-time').innerText;
     document.getElementById('res-time').innerText = finalTime;
 
-    if (navigator.vibrate) navigator.vibrate([100, 50, 100]); // Victory vibe
+    if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+
+    // CALCULATE REAL REWARDS
+    const distKm = state.run.track.dist;
+    const baseXP = Math.floor(distKm * 100); // 100 XP per KM
+    const speedBonus = state.gps.speed > 10 ? 50 : 0; // Bonus for going fast
+    const totalXP = baseXP + speedBonus + 50; // Base participation reward
 
     // Save Result
     try {
@@ -764,15 +801,25 @@ async function finishRun() {
             username: state.userData.username,
             trackName: state.run.track.name,
             time: finalTime,
+            xpEarned: totalXP,
             date: serverTimestamp()
         });
 
-        // Update Stats
-        const distKm = state.run.track.dist;
+        // Update Stats with Real XP and Level Calc
+        const newTotalXP = (state.userData.xp || 0) + totalXP;
+        const newLevel = Math.floor(Math.sqrt(newTotalXP / 100)) + 1; // Simple RPG curve: Level = sqrt(XP/100)
+
         await updateDoc(doc(db, "users", state.user.uid), {
             totalDist: increment(distKm),
-            xp: increment(100)
+            xp: increment(totalXP),
+            level: newLevel
         });
+
+        // Update local state immediately
+        state.userData.xp = newTotalXP;
+        state.userData.level = newLevel;
+        document.getElementById('home-lvl').innerText = newLevel;
+
     } catch (e) {
         console.error("Error saving result", e);
         alert("Error guardando el resultado. Comprueba tu conexión.");
@@ -780,18 +827,149 @@ async function finishRun() {
 }
 
 window.abortRun = () => {
-    if (confirm("¿Segura que quieres abandonar el descenso?")) {
-        clearInterval(state.run.timer);
-        state.run.active = false;
-        document.getElementById('modal-run').classList.add('hidden');
-        document.getElementById('modal-detail').classList.remove('hidden');
-    }
+    // Called by hold button (direct) or voice (needs confirm?)
+    // If called directly, we assume intention.
+    clearInterval(state.run.timer);
+    state.run.active = false;
+    document.getElementById('modal-run').classList.add('hidden');
+    document.getElementById('modal-detail').classList.remove('hidden');
+
+    // Stop voice recognition loop if only meant for run
+    // But keep it alive if global.
 };
+
+function initHoldToAbort() {
+    const btn = document.getElementById('btn-run-abort-hold');
+    const bar = btn.querySelector('.active-abort-progress');
+    let timer = null;
+    let startTime = 0;
+    const DURATION = 1500; // 1.5s hold to stop run
+
+    const start = (e) => {
+        if (e.cancelable) e.preventDefault();
+        startTime = Date.now();
+        bar.style.transition = `width ${DURATION}ms linear`;
+        bar.style.width = '100%';
+
+        timer = setTimeout(() => {
+            window.abortRun();
+        }, DURATION);
+    };
+
+    const end = () => {
+        clearTimeout(timer);
+        bar.style.transition = 'width 0.2s ease-out';
+        bar.style.width = '0%';
+    };
+
+    btn.addEventListener('mousedown', start);
+    btn.addEventListener('touchstart', start);
+    btn.addEventListener('mouseup', end);
+    btn.addEventListener('mouseleave', end);
+    btn.addEventListener('touchend', end);
+}
 
 window.closeResults = () => {
     document.getElementById('modal-results').classList.add('hidden');
     state.activeTrack = null;
     loadProfile();
+};
+
+window.nav = (page) => {
+    // Hide all
+    ['home', 'rank', 'shop'].forEach(p => {
+        const el = document.getElementById(`page-${p}`);
+        if (el) el.classList.add('hidden');
+    });
+
+    document.getElementById(`page-${page}`).classList.remove('hidden');
+
+    document.querySelectorAll('.nav-item').forEach(el => {
+        el.classList.remove('text-blue-600', 'text-purple-600', 'active', 'scale-110');
+        el.classList.add('text-slate-300');
+    });
+
+    const cur = event.currentTarget || document.querySelector(`.nav-item[onclick="nav('${page}')"]`);
+    if (cur) {
+        cur.classList.remove('text-slate-300');
+        if (page === 'shop') cur.classList.add('text-purple-600', 'active', 'scale-110');
+        else cur.classList.add('text-blue-600', 'active', 'scale-110');
+    }
+
+    if (page === 'shop') loadShop();
+    if (page === 'rank') loadLeaderboard('xp');
+};
+
+const SHOP_ITEMS = [
+    { id: 'color_purple', name: 'Tema Púrpura', type: 'color', cost: 500, icon: 'fa-palette', color: 'bg-purple-500' },
+    { id: 'color_green', name: 'Tema Verde', type: 'color', cost: 500, icon: 'fa-palette', color: 'bg-green-500' },
+    { id: 'title_pro', name: 'Título: PRO Rider', type: 'title', cost: 1000, icon: 'fa-id-badge', color: 'bg-slate-900' },
+    { id: 'avatar_wolf', name: 'Avatar Lobo', type: 'avatar', cost: 2000, icon: 'fa-dog', color: 'bg-blue-600' }
+];
+
+window.loadShop = () => {
+    document.getElementById('shop-user-xp').innerText = state.userData.xp || 0;
+    const list = document.getElementById('shop-list');
+    list.innerHTML = '';
+
+    const owned = state.userData.items || [];
+
+    SHOP_ITEMS.forEach(item => {
+        const isOwned = owned.includes(item.id);
+        const canBuy = (state.userData.xp || 0) >= item.cost;
+
+        const card = document.createElement('div');
+        card.className = "bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col items-center gap-3 relative overflow-hidden";
+        card.innerHTML = `
+            <div class="w-12 h-12 ${item.color} rounded-full flex items-center justify-center text-white text-xl shadow-lg">
+                <i class="fa-solid ${item.icon}"></i>
+            </div>
+            <div class="text-center z-10">
+                <h4 class="font-bold text-slate-900 text-sm">${item.name}</h4>
+                <p class="text-xs text-slate-400 font-bold">${isOwned ? 'ADQUIRIDO' : item.cost + ' XP'}</p>
+            </div>
+            <button onclick="buyItem('${item.id}')" ${isOwned ? 'disabled' : ''} 
+                class="w-full py-2 rounded-xl text-xs font-bold transition-all ${isOwned ? 'bg-green-100 text-green-600' : (canBuy ? 'bg-slate-900 text-white hover:scale-105' : 'bg-slate-100 text-slate-300')}">
+                ${isOwned ? '<i class="fa-solid fa-check"></i> En Propiedad' : 'Comprar'}
+            </button>
+        `;
+        list.appendChild(card);
+    });
+};
+
+window.buyItem = async (itemId) => {
+    const item = SHOP_ITEMS.find(i => i.id === itemId);
+    if (!item) return;
+
+    if ((state.userData.xp || 0) < item.cost) {
+        return alert("No tienes suficientes XP.");
+    }
+
+    if (confirm(`¿Comprar ${item.name} por ${item.cost} XP?`)) {
+        try {
+            // Deduct XP? usually shop items don't consume XP level progress, but "Points".
+            // User said "comprar cosas que ganas con puntos y xp".
+            // Let's assume we spend XP for now based on request "compra cosas... con puntos y xp".
+            // Or maybe XP is strictly for level and separate "Coins"?
+            // Simpler: Spend XP (like Souls).
+
+            await updateDoc(doc(db, "users", state.user.uid), {
+                xp: increment(-item.cost),
+                items: arrayUnion(itemId)
+            });
+
+            state.userData.xp -= item.cost;
+            if (!state.userData.items) state.userData.items = [];
+            state.userData.items.push(itemId);
+
+            loadShop(); // Refresh UI
+            alert("¡Compra realizada!");
+
+        } catch (e) {
+            console.error(e);
+            alert("Error en la compra.");
+        }
+    }
 };
 
 // --- CREATOR MODE ---

@@ -215,8 +215,34 @@
                     <button id="btn-rank-km" onclick="loadLeaderboard('km')"
                         class="flex-1 py-2 rounded-xl text-sm font-bold text-slate-400 hover:text-slate-900 transition-all">Distancia</button>
                 </div>
-                <div id="leaderboard-list" class="space-y-3">
-                    <!-- JS Injected -->
+                <div id="leaderboard-list" class="space-y-3"></div>
+            </div>
+
+            <!-- SHOP PAGE -->
+            <div id="page-shop" class="hidden p-6 space-y-6 pb-24 animate-slide-up">
+                <div class="flex items-center justify-between">
+                    <h2 class="text-3xl font-black text-slate-900">Tienda</h2>
+                    <div class="bg-yellow-100 px-3 py-1 rounded-full text-yellow-700 font-bold text-sm">
+                        <i class="fa-solid fa-coins mr-1"></i> <span id="shop-user-xp">0</span> XP
+                    </div>
+                </div>
+
+                <p class="text-sm text-slate-500 font-medium">Usa tus XP ganados en las pistas para personalizar tu
+                    perfil.</p>
+
+                <div class="grid grid-cols-2 gap-4" id="shop-list">
+                    <!-- Items injected by JS -->
+                    <!-- Example -->
+                    <div
+                        class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col items-center gap-3">
+                        <div class="w-12 h-12 bg-purple-500 rounded-full"></div>
+                        <div class="text-center">
+                            <h4 class="font-bold text-slate-900 text-sm">Color Púrpura</h4>
+                            <p class="text-xs text-slate-400 font-bold">500 XP</p>
+                        </div>
+                        <button
+                            class="w-full py-2 bg-slate-900 text-white rounded-xl text-xs font-bold">Comprar</button>
+                    </div>
                 </div>
             </div>
 
@@ -235,6 +261,12 @@
                 class="nav-item flex-1 flex flex-col items-center gap-1 p-2 text-slate-300 hover:text-slate-500 transition-all transform hover:scale-110">
                 <i class="fa-solid fa-trophy text-xl"></i>
                 <span class="text-[10px] font-bold">Ranking</span>
+            </button>
+            <div class="w-px h-8 bg-slate-100"></div>
+            <button onclick="nav('shop')"
+                class="nav-item flex-1 flex flex-col items-center gap-1 p-2 text-slate-300 hover:text-purple-500 transition-all transform hover:scale-110">
+                <i class="fa-solid fa-store text-xl"></i>
+                <span class="text-[10px] font-bold">Tienda</span>
             </button>
             <div class="w-px h-8 bg-slate-100"></div>
             <button onclick="logout()"
@@ -362,9 +394,9 @@
                     </div>
                 </div>
 
-                <button id="btn-record-track" onclick="toggleCreatorRecord()"
-                    class="w-full mb-3 py-3 rounded-xl font-black text-sm uppercase tracking-wide border-2 border-dashed border-slate-300 text-slate-400 hover:border-blue-500 hover:text-blue-600 transition flex items-center justify-center gap-2">
-                    <i class="fa-solid fa-circle text-xs"></i> <span>Grabar Recorrido (GPS)</span>
+                <button id="btn-record-track" onclick="addCurrentGPSPoint()"
+                    class="w-full mb-3 py-3 rounded-xl font-black text-sm uppercase tracking-wide border-2 border-dashed border-slate-300 text-slate-400 hover:border-blue-500 hover:text-blue-600 transition flex items-center justify-center gap-2 active:scale-95">
+                    <i class="fa-solid fa-map-pin text-xs"></i> <span>Añadir Checkpoint (GPS)</span>
                 </button>
 
                 <div class="grid grid-cols-2 gap-3">
@@ -460,14 +492,26 @@
             </div>
 
             <div class="grid grid-cols-4 gap-4">
+                <!-- Voice Control Toggle -->
                 <button onclick="toggleVoice()" id="btn-voice-toggle"
                     class="col-span-1 aspect-square rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-slate-400 hover:bg-white/10 hover:text-white transition backdrop-blur">
                     <i class="fa-solid fa-microphone"></i>
                 </button>
-                <button onclick="abortRun()"
-                    class="col-span-3 h-full rounded-2xl bg-red-500/20 border border-red-500/50 text-red-200 font-bold uppercase tracking-widest hover:bg-red-500/30 transition backdrop-blur flex items-center justify-center gap-2">
-                    <i class="fa-solid fa-xmark"></i> Terminar Carrera
+
+                <!-- NEW: In-Run Voice Chat Toggle -->
+                <button onclick="toggleGlobalVoice()"
+                    class="col-span-1 aspect-square rounded-2xl bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center text-indigo-300 hover:bg-indigo-500/40 hover:text-white transition backdrop-blur">
+                    <i class="fa-solid fa-headset"></i>
                 </button>
+
+                <!-- Hold to Abort -->
+                <div id="btn-run-abort-hold"
+                    class="col-span-2 h-full relative rounded-2xl bg-red-500/20 border border-red-500/50 text-red-200 font-bold uppercase tracking-widest overflow-hidden flex items-center justify-center gap-2 cursor-pointer select-none">
+                    <span class="relative z-10 text-[10px] text-center leading-tight">MANTÉN PARA<br>TERMINAR</span>
+                    <div
+                        class="absolute left-0 top-0 h-full w-0 bg-red-600/50 active-abort-progress transition-all duration-75">
+                    </div>
+                </div>
             </div>
         </div>
     </div>
