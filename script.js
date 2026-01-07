@@ -887,19 +887,24 @@ window.nav = (page) => {
         if (el) el.classList.add('hidden');
     });
 
-    document.getElementById(`page-${page}`).classList.remove('hidden');
+    const targetPage = document.getElementById(`page-${page}`);
+    if (targetPage) targetPage.classList.remove('hidden');
 
     document.querySelectorAll('.nav-item').forEach(el => {
-        el.classList.remove('text-blue-600', 'text-purple-600', 'active', 'scale-110');
+        el.classList.remove('text-blue-600', 'text-purple-600', 'active', 'scale-110', 'text-slate-500', 'text-slate-900');
         el.classList.add('text-slate-300');
     });
 
-    const cur = event.currentTarget || document.querySelector(`.nav-item[onclick="nav('${page}')"]`);
+    const evt = window.event;
+    const cur = (evt && evt.currentTarget) ? evt.currentTarget : document.querySelector(`.nav-item[onclick="nav('${page}')"]`);
+
     if (cur) {
         cur.classList.remove('text-slate-300');
-        // Profile gets blue, Rank gets slate (handled above), Home gets blue
-        cur.classList.add(page === 'rank' ? 'text-slate-500' : 'text-blue-600', 'active', 'scale-110');
-        if (page === 'rank') cur.classList.add('text-slate-900'); // active rank color
+        if (page === 'rank') {
+            cur.classList.add('text-slate-500', 'text-slate-900', 'active', 'scale-110');
+        } else {
+            cur.classList.add('text-blue-600', 'active', 'scale-110');
+        }
     }
 
     if (page === 'rank') loadLeaderboard('xp');
