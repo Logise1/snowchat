@@ -38,25 +38,7 @@ const state = {
 
 // ...
 
-// --- GPS SYSTEM ---
-function startGPS() {
-    if (navigator.geolocation) {
-        state.gpsWatchId = navigator.geolocation.watchPosition(pos => {
-            state.gps = {
-                lat: pos.coords.latitude,
-                lng: pos.coords.longitude,
-                alt: pos.coords.altitude || 0,
-                speed: pos.coords.speed || 0,
-                acc: pos.coords.accuracy,
-                heading: pos.coords.heading || 0
-            };
-            if (state.run.active) updateRunLoop();
-            if (state.creator.recording) updateCreatorRecording();
-        }, (err) => {
-            console.error("GPS Error", err);
-        }, { enableHighAccuracy: true, maximumAge: 0 });
-    }
-}
+
 // ...
 
 // --- CREATOR RECORDING LOGIC ---
