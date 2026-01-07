@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="theme-color" content="#ffffff">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>SnowTrack White</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Font Awesome -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+
+    <!-- Leaflet Maps -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body class="h-screen w-screen overflow-hidden flex flex-col">
+
+    <!-- === LOADER === -->
+    <div id="loader"
+        class="fixed inset-0 z-[100] bg-white flex flex-col items-center justify-center transition-opacity duration-500">
+        <div class="relative w-20 h-20 mb-4">
+            <div class="absolute inset-0 border-4 border-slate-100 rounded-full"></div>
+            <div class="absolute inset-0 border-4 border-blue-600 rounded-full border-t-transparent animate-spin"></div>
+            <i
+                class="fa-solid fa-mountain absolute inset-0 flex items-center justify-center text-blue-600 text-2xl"></i>
+        </div>
+        <h1 class="text-3xl font-black text-slate-900 tracking-tighter">SNOW<span class="text-blue-600">TRACK</span>
+        </h1>
+        <p class="text-slate-400 text-xs font-medium tracking-widest mt-1">CARGANDO MAPAS...</p>
+    </div>
+
+    <!-- === LOGIN === -->
+    <div id="view-auth" class="hidden absolute inset-0 z-50 bg-white p-8 flex flex-col justify-center">
+        <div class="mb-10">
+            <span
+                class="px-3 py-1 bg-blue-50 text-blue-600 rounded-full text-xs font-bold uppercase tracking-wider mb-4 inline-block shadow-sm">Versión
+                2.1</span>
+            <h1 class="text-5xl font-black text-slate-900 leading-tight mb-2">Tu Montaña.<br><span
+                    class="gradient-text">Tus Reglas.</span></h1>
+            <p class="text-slate-500 font-medium">Crea pistas dibujando en el mapa y compite contra el mundo.</p>
+        </div>
+
+        <div class="space-y-4">
+            <div
+                class="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex items-center gap-3 focus-within:ring-2 ring-blue-500 transition shadow-sm">
+                <i class="fa-regular fa-user text-slate-400"></i>
+                <input type="text" id="auth-user" placeholder="Nombre de usuario"
+                    class="bg-transparent w-full outline-none font-bold text-slate-800 placeholder-slate-400">
+            </div>
+            <div
+                class="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex items-center gap-3 focus-within:ring-2 ring-blue-500 transition shadow-sm">
+                <i class="fa-solid fa-key text-slate-400"></i>
+                <input type="password" id="auth-pass" placeholder="Contraseña"
+                    class="bg-transparent w-full outline-none font-bold text-slate-800 placeholder-slate-400">
+            </div>
+
+            <button id="btn-login" onclick="handleAuth('login')"
+                class="w-full py-4 rounded-2xl bg-slate-900 text-white font-bold text-lg shadow-xl shadow-slate-200 btn-press hover:bg-slate-800 transition">
+                Iniciar Sesión
+            </button>
+            <button id="btn-register" onclick="handleAuth('register')"
+                class="w-full py-4 rounded-2xl bg-white border-2 border-slate-100 text-slate-900 font-bold text-lg btn-press hover:bg-slate-50 transition">
+                Crear Cuenta
+            </button>
+            <p id="auth-error"
+                class="text-center text-red-500 text-xs font-bold min-h-[1.5rem] transition-opacity duration-300 opacity-0">
+            </p>
+        </div>
+    </div>
+
+    <!-- === APP LAYOUT === -->
+    <div id="app-layout" class="hidden flex flex-col h-full relative">
+
+        <!-- MAIN SCROLL AREA -->
+        <main id="main-container"
+            class="flex-1 overflow-y-auto overflow-x-hidden relative pb-24 scroll-smooth no-scrollbar">
+
+            <!-- HOME PAGE -->
+            <div id="page-home" class="p-6 space-y-8 animate-slide-up">
+
+                <!-- Header Profile -->
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-4">
+                        <div class="relative w-14 h-14">
+                            <!-- Level Circle -->
+                            <svg class="w-full h-full transform -rotate-90">
+                                <circle cx="28" cy="28" r="26" stroke="#e2e8f0" stroke-width="4" fill="none" />
+                                <circle cx="28" cy="28" r="26" stroke="url(#blue-gradient)" stroke-width="4" fill="none"
+                                    stroke-dasharray="163" stroke-dashoffset="40" stroke-linecap="round" />
+                                <defs>
+                                    <linearGradient id="blue-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                                        <stop offset="0%" stop-color="#2563eb" />
+                                        <stop offset="100%" stop-color="#7c3aed" />
+                                    </linearGradient>
+                                </defs>
+                            </svg>
+                            <div class="absolute inset-0 flex flex-col items-center justify-center">
+                                <span class="text-[10px] font-bold text-slate-400 uppercase leading-none">Lvl</span>
+                                <span id="home-lvl" class="text-lg font-black text-slate-900 leading-none">1</span>
+                            </div>
+                        </div>
+                        <div>
+                            <p class="text-slate-400 text-xs font-bold uppercase tracking-wider mb-1">Bienvenido</p>
+                            <h2 id="home-username" class="text-3xl font-black text-slate-900">Rider</h2>
+                        </div>
+                    </div>
+
+                    <!-- Global Voice Toggle (Join Only) -->
+                    <div id="global-voice-container">
+                        <button id="btn-global-voice" onclick="toggleGlobalVoice()"
+                            class="w-12 h-12 rounded-full bg-white border border-slate-100 shadow-lg text-slate-400 flex items-center justify-center text-xl hover:scale-105 transition-transform btn-press">
+                            <i class="fa-solid fa-microphone-slash"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Voice Chat Overlay -->
+                <div id="voice-overlay" class="hidden">
+                    <div class="voice-card">
+                        <div class="voice-header" id="voice-header">
+                            <div class="flex items-center gap-2">
+                                <div class="w-2 h-2 rounded-full bg-green-400 animate-pulse"></div>
+                                <span class="font-bold text-white text-sm tracking-wide">VOZ ACTIVA</span>
+                            </div>
+                            <button onclick="minimizeVoice()" class="text-slate-400 hover:text-white transition-colors">
+                                <i class="fa-solid fa-minus"></i>
+                            </button>
+                        </div>
+
+                        <div id="voice-list-container" class="voice-users-list no-scrollbar">
+                            <!-- Users injected here -->
+                            <!-- Example: -->
+                            <!--
+                            <div class="voice-user-row">
+                                <div class="user-avatar-voice">JD</div>
+                                <span class="text-slate-200 text-xs font-bold">John Doe</span>
+                            </div>
+                            -->
+                        </div>
+
+                        <div id="voice-controls">
+                            <div id="btn-leave-hold" class="btn-hold-leave">
+                                <span class="z-10 relative pointer-events-none"><i class="fa-solid fa-power-off"></i>
+                                    MANTÉN PARA SALIR</span>
+                                <div class="hold-progress" id="leave-progress"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Main Action: Create -->
+                <button onclick="openCreator()"
+                    class="w-full relative overflow-hidden rounded-[2rem] h-36 flex items-center px-8 shadow-xl shadow-blue-200 group btn-press transition-all hover:shadow-2xl hover:shadow-blue-300">
+                    <div class="absolute inset-0 gradient-bg"></div>
+                    <div class="absolute -right-4 -top-4 w-32 h-32 bg-white opacity-10 rounded-full blur-2xl"></div>
+                    <div class="absolute left-0 bottom-0 w-full h-20 bg-gradient-to-t from-black/20 to-transparent">
+                    </div>
+
+                    <div class="relative z-10 text-left text-white">
+                        <div class="flex items-center gap-2 mb-1">
+                            <span
+                                class="px-2 py-0.5 bg-white/20 rounded text-[10px] font-bold backdrop-blur-sm border border-white/10">NUEVO</span>
+                        </div>
+                        <h3 class="text-2xl font-black italic uppercase tracking-tight">Crear Pista</h3>
+                        <p class="text-blue-100 text-sm font-medium">Dibuja tu ruta en el mapa</p>
+                    </div>
+                    <div
+                        class="absolute right-6 z-10 bg-white text-blue-600 w-12 h-12 rounded-full flex items-center justify-center shadow-lg transform group-hover:scale-110 transition duration-300">
+                        <i class="fa-solid fa-pen-nib"></i>
+                    </div>
+                </button>
+
+                <!-- Track Feed -->
+                <div>
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-lg font-black text-slate-900">Pistas Cercanas</h3>
+                        <button onclick="refreshTracks()"
+                            class="w-8 h-8 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center hover:bg-slate-200 hover:text-blue-600 transition"><i
+                                class="fa-solid fa-rotate-right"></i></button>
+                    </div>
+
+                    <div id="track-feed" class="space-y-4">
+                        <!-- JS Injected -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- LEADERBOARD PAGE -->
+            <div id="page-rank" class="hidden p-6 space-y-6 pb-24 animate-slide-up">
+                <h2 class="text-3xl font-black text-slate-900">Ranking <span class="text-purple-600">Global</span></h2>
+                <div class="bg-white rounded-2xl p-1 flex border border-slate-100 shadow-sm">
+                    <button id="btn-rank-xp" onclick="loadLeaderboard('xp')"
+                        class="flex-1 py-2 rounded-xl text-sm font-bold bg-slate-900 text-white shadow transition-all">Puntos
+                        XP</button>
+                    <button id="btn-rank-km" onclick="loadLeaderboard('km')"
+                        class="flex-1 py-2 rounded-xl text-sm font-bold text-slate-400 hover:text-slate-900 transition-all">Distancia</button>
+                </div>
+                <div id="leaderboard-list" class="space-y-3">
+                    <!-- JS Injected -->
+                </div>
+            </div>
+
+        </main>
+
+        <!-- BOTTOM NAV -->
+        <nav
+            class="h-24 bg-white/90 backdrop-blur-md nav-shadow rounded-t-[2.5rem] flex justify-around items-center px-6 fixed bottom-0 w-full z-40 border-t border-slate-50/50 pb-4">
+            <button onclick="nav('home')"
+                class="nav-item active flex-1 flex flex-col items-center gap-1 p-2 text-blue-600 transition-all transform hover:scale-110">
+                <i class="fa-solid fa-house text-xl"></i>
+                <span class="text-[10px] font-bold">Inicio</span>
+            </button>
+            <div class="w-px h-8 bg-slate-100"></div>
+            <button onclick="nav('rank')"
+                class="nav-item flex-1 flex flex-col items-center gap-1 p-2 text-slate-300 hover:text-slate-500 transition-all transform hover:scale-110">
+                <i class="fa-solid fa-trophy text-xl"></i>
+                <span class="text-[10px] font-bold">Ranking</span>
+            </button>
+            <div class="w-px h-8 bg-slate-100"></div>
+            <button onclick="logout()"
+                class="nav-item flex-1 flex flex-col items-center gap-1 p-2 text-slate-300 hover:text-red-400 transition-all transform hover:scale-110">
+                <i class="fa-solid fa-arrow-right-from-bracket text-xl"></i>
+                <span class="text-[10px] font-bold">Salir</span>
+            </button>
+        </nav>
+    </div>
+
+    <!-- === TRACK DETAIL MODAL (FULL SCREEN) === -->
+    <div id="modal-detail" class="hidden fixed inset-0 z-50 bg-white flex flex-col animate-slide-up">
+        <!-- Close Button -->
+        <button onclick="closeDetail()"
+            class="absolute top-6 left-6 z-[60] bg-white/90 backdrop-blur w-10 h-10 rounded-full shadow-lg flex items-center justify-center font-bold text-slate-900 border border-slate-100 btn-press hover:bg-slate-50 transition">
+            <i class="fa-solid fa-arrow-left"></i>
+        </button>
+
+        <!-- Top: Map -->
+        <div class="h-[45vh] w-full bg-slate-100 relative">
+            <div id="detail-map" class="w-full h-full z-0"></div>
+            <div
+                class="absolute bottom-0 inset-x-0 h-24 bg-gradient-to-t from-white to-transparent z-10 pointer-events-none">
+            </div>
+        </div>
+
+        <!-- Content -->
+        <div
+            class="flex-1 -mt-8 bg-white rounded-t-[2.5rem] relative z-20 px-6 pt-8 pb-32 flex flex-col overflow-y-auto no-scrollbar shadow-[0_-10px_40px_-10px_rgba(0,0,0,0.1)]">
+
+            <!-- Header -->
+            <div class="flex justify-between items-start mb-6">
+                <div>
+                    <span class="text-xs font-bold text-blue-500 uppercase tracking-wider mb-1 block">Pista
+                        Seleccionada</span>
+                    <h2 id="detail-title" class="text-3xl font-black text-slate-900 leading-none mb-1">Nombre Pista</h2>
+                    <p id="detail-author" class="text-xs text-slate-400 font-bold uppercase">Creado por Rider</p>
+                </div>
+                <div class="text-right bg-slate-50 px-3 py-2 rounded-xl border border-slate-100">
+                    <div class="text-xl font-black text-purple-600" id="detail-avg">--:--</div>
+                    <div class="text-[8px] font-bold text-slate-400 uppercase">Tiempo Promedio</div>
+                </div>
+            </div>
+
+            <!-- Stats Grid -->
+            <div class="grid grid-cols-3 gap-3 mb-6">
+                <div
+                    class="bg-slate-50 p-3 rounded-2xl border border-slate-100 text-center hover:bg-slate-100 transition">
+                    <i class="fa-solid fa-ruler text-slate-300 text-sm mb-1"></i>
+                    <div id="detail-dist" class="font-black text-slate-800">0km</div>
+                </div>
+                <div
+                    class="bg-slate-50 p-3 rounded-2xl border border-slate-100 text-center hover:bg-slate-100 transition">
+                    <i class="fa-solid fa-arrow-down text-slate-300 text-sm mb-1"></i>
+                    <div id="detail-drop" class="font-black text-slate-800">0m</div>
+                </div>
+                <div
+                    class="bg-slate-50 p-3 rounded-2xl border border-slate-100 text-center hover:bg-slate-100 transition">
+                    <i class="fa-solid fa-flag text-slate-300 text-sm mb-1"></i>
+                    <div id="detail-cps" class="font-black text-slate-800">0</div>
+                </div>
+            </div>
+
+            <!-- Leaderboard Section -->
+            <div class="flex-1">
+                <h3
+                    class="font-bold text-slate-900 text-sm uppercase mb-3 border-b border-slate-100 pb-2 flex items-center justify-between">
+                    Clasificación
+                    <i class="fa-solid fa-trophy text-yellow-500"></i>
+                </h3>
+                <div id="detail-leaderboard" class="space-y-2">
+                    <div class="text-center text-slate-400 text-xs py-4">Cargando tiempos...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer Action (GPS LOCK) -->
+        <div class="absolute bottom-0 inset-x-0 bg-white/90 backdrop-blur-md p-6 border-t border-slate-100 z-30 pb-8">
+            <button id="btn-start-run" disabled
+                class="w-full py-4 rounded-2xl bg-slate-200 text-slate-400 font-bold text-lg flex items-center justify-center gap-2 transition-all">
+                <i class="fa-solid fa-lock"></i>
+                <span id="btn-start-text">Acércate a la salida</span>
+            </button>
+            <p id="dist-msg" class="text-center text-xs text-slate-400 font-bold mt-2 font-mono">GPS: Calculando...</p>
+        </div>
+    </div>
+
+    <!-- === CREATOR MODE === -->
+    <div id="modal-creator" class="hidden fixed inset-0 z-50 bg-white flex flex-col">
+        <div class="absolute top-0 inset-x-0 z-[500] p-4 flex items-start justify-between pointer-events-none">
+            <div
+                class="glass-bg px-4 py-3 rounded-2xl shadow-lg pointer-events-auto border border-white/20 backdrop-blur-md">
+                <h3 class="font-black text-slate-900 text-sm uppercase">Modo Creador</h3>
+                <p class="text-[10px] text-slate-500 font-bold">Toca el mapa para añadir puntos</p>
+            </div>
+            <button onclick="closeCreator()"
+                class="bg-white text-slate-900 w-10 h-10 rounded-full shadow-lg flex items-center justify-center font-bold pointer-events-auto border border-slate-100 btn-press">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
+
+        <div id="creator-map" class="w-full h-full z-0 bg-slate-100"></div>
+
+        <div class="absolute bottom-8 inset-x-4 z-[500]">
+            <div id="creator-step-1" class="bg-white rounded-3xl p-5 shadow-2xl card-shadow border border-slate-50">
+                <label class="text-xs font-bold text-slate-400 uppercase ml-1 block mb-2">Nombre de la Pista</label>
+                <div class="flex gap-2">
+                    <input type="text" id="track-name-input" placeholder="Ej: La Rompepiernas"
+                        class="flex-1 bg-slate-50 rounded-xl px-4 py-3 font-bold text-slate-900 outline-none focus:ring-2 ring-blue-500 transition-all border border-slate-200">
+                    <button onclick="startDrawing()"
+                        class="bg-slate-900 text-white w-14 rounded-xl flex items-center justify-center btn-press shadow-lg"><i
+                            class="fa-solid fa-arrow-right"></i></button>
+                </div>
+            </div>
+
+            <div id="creator-step-2"
+                class="hidden bg-white rounded-3xl p-4 shadow-2xl card-shadow border border-slate-50 flex flex-col gap-3">
+                <div class="flex items-center justify-between px-2">
+                    <div class="flex items-center gap-2">
+                        <span class="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse"></span>
+                        <span class="text-xs font-bold text-slate-500 uppercase"><span id="point-counter">0</span>
+                            Puntos</span>
+                    </div>
+                    <div class="text-xs font-bold text-slate-900 bg-slate-100 px-2 py-1 rounded" id="total-dist">0.0 km
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <button onclick="undoPoint()"
+                        class="bg-slate-100 text-slate-600 py-3 rounded-xl font-bold text-sm btn-press hover:bg-slate-200 transition">
+                        <i class="fa-solid fa-rotate-left mr-1"></i> Deshacer
+                    </button>
+                    <button onclick="saveTrack()"
+                        class="gradient-bg text-white py-3 rounded-xl font-bold text-sm btn-press shadow-lg shadow-blue-200 hover:shadow-blue-300 transition">
+                        <i class="fa-solid fa-check mr-1"></i> Guardar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- === RUN MODE HUD (COCKPIT) === -->
+    <div id="modal-run" class="hidden fixed inset-0 z-[60] hud-container text-white flex flex-col">
+        <!-- Live Map Background -->
+        <div id="run-map-bg" class="absolute inset-0 z-0 opacity-30 mix-blend-overlay grayscale pointer-events-none">
+        </div>
+        <div class="absolute inset-0 z-0 map-gradient-overlay pointer-events-none"></div>
+
+        <!-- Top Bar -->
+        <div class="relative z-10 p-6 flex justify-between items-center">
+            <div class="flex items-center gap-2">
+                <span class="relative flex h-3 w-3">
+                    <span
+                        class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                    <span class="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+                </span>
+                <span class="text-xs font-bold tracking-widest text-red-500 uppercase">EN VIVO</span>
+            </div>
+            <div id="hud-time" class="text-xl font-mono font-bold text-slate-300">00:00</div>
+        </div>
+
+        <!-- Center Gauge Cluster -->
+        <div class="relative z-10 flex-1 flex flex-col items-center justify-center -mt-10">
+
+            <!-- Warning Alert -->
+            <div id="hud-warning"
+                class="hidden mb-6 px-4 py-2 bg-red-500/90 backdrop-blur rounded-full animate-pulse flex items-center gap-2 shadow-[0_0_20px_rgba(239,68,68,0.5)]">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+                <span class="font-black text-xs uppercase tracking-wider">¡Te alejas de la pista!</span>
+            </div>
+
+            <!-- Modern Gauge -->
+            <div class="relative mb-2">
+                <div class="gauge-container">
+                    <div class="gauge-bg"></div>
+                    <div id="gauge-fill" class="gauge-fill" style="transform: rotate(-135deg);"></div>
+                </div>
+
+                <!-- Inner Speed Text -->
+                <div class="absolute inset-0 flex flex-col items-center justify-end pb-4">
+                    <span class="text-[10px] font-bold text-blue-400 uppercase tracking-widest mb-1">VELOCIDAD</span>
+                    <div class="flex items-baseline gap-1">
+                        <span id="hud-speed"
+                            class="text-7xl font-black font-mono tracking-tighter leading-none text-white drop-shadow-[0_0_15px_rgba(255,255,255,0.5)]">0</span>
+                        <span class="text-lg font-bold text-slate-400">km/h</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Navigation / Next Point -->
+            <div class="text-center mt-6">
+                <div class="flex items-center justify-center gap-3 mb-2">
+                    <i class="fa-solid fa-arrow-up text-3xl text-blue-500 direction-arrow animate-bounce"></i>
+                    <div>
+                        <p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest">DESTINO</p>
+                        <h2 id="hud-next-point" class="text-3xl font-black italic text-white drop-shadow-md">SALIDA</h2>
+                    </div>
+                </div>
+                <div class="inline-block bg-white/5 backdrop-blur rounded-lg px-4 py-1 border border-white/10">
+                    <p class="text-blue-300 font-mono font-bold text-lg"><span id="hud-dist">--</span> m</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bottom Controls -->
+        <div class="relative z-10 p-6 pb-8">
+            <!-- Voice Status -->
+            <div id="voice-status-container" class="mb-6 flex flex-col items-center justify-center min-h-[30px]">
+                <div id="voice-waves" class="voice-active hidden">
+                    <div class="voice-bar"></div>
+                    <div class="voice-bar"></div>
+                    <div class="voice-bar"></div>
+                    <div class="voice-bar"></div>
+                    <div class="voice-bar"></div>
+                </div>
+                <p id="voice-text" class="text-[10px] font-bold text-slate-500 uppercase tracking-wider mt-2">Dí
+                    "Parar", "Estado" o "Velocidad"</p>
+            </div>
+
+            <div class="grid grid-cols-4 gap-4">
+                <button onclick="toggleVoice()" id="btn-voice-toggle"
+                    class="col-span-1 aspect-square rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-slate-400 hover:bg-white/10 hover:text-white transition backdrop-blur">
+                    <i class="fa-solid fa-microphone"></i>
+                </button>
+                <button onclick="abortRun()"
+                    class="col-span-3 h-full rounded-2xl bg-red-500/20 border border-red-500/50 text-red-200 font-bold uppercase tracking-widest hover:bg-red-500/30 transition backdrop-blur flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-xmark"></i> Terminar Carrera
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- === RESULTS MODAL === -->
+    <div id="modal-results"
+        class="hidden fixed inset-0 z-[70] bg-white flex flex-col items-center justify-center p-8 animate-slide-up">
+        <div
+            class="relative w-24 h-24 bg-yellow-100 rounded-full flex items-center justify-center mb-6 text-yellow-500 text-5xl shadow-2xl shadow-yellow-200">
+            <div class="absolute inset-0 rounded-full border-4 border-yellow-200 animate-pulse"></div>
+            <i class="fa-solid fa-trophy relative z-10"></i>
+        </div>
+        <h2 class="text-5xl font-black text-slate-900 mb-2 tracking-tight">¡META!</h2>
+        <p class="text-slate-500 font-medium mb-12 text-lg">Has pulverizado la pista.</p>
+
+        <div
+            class="w-full max-w-sm bg-slate-50 rounded-[2rem] p-8 mb-8 shadow-xl shadow-slate-100 border border-slate-100">
+            <div class="flex justify-between items-center border-b border-slate-200 pb-6 mb-6">
+                <span class="text-slate-400 text-sm font-bold uppercase tracking-wider">Tiempo Total</span>
+                <span id="res-time" class="text-4xl font-mono font-black text-slate-900">0:00</span>
+            </div>
+            <div class="flex justify-between items-center">
+                <span class="text-slate-400 text-sm font-bold uppercase tracking-wider">XP Ganado</span>
+                <span id="res-xp" class="text-3xl font-black text-blue-600 drop-shadow-sm">+100</span>
+            </div>
+        </div>
+
+        <button onclick="closeResults()"
+            class="w-full max-w-sm bg-slate-900 text-white font-bold py-5 rounded-2xl btn-press shadow-xl hover:bg-slate-800 transition">Volver
+            al Inicio</button>
+    </div>
+
+    <!-- Main Logic -->
+    <script type="module" src="script.js"></script>
+</body>
+
+</html>
