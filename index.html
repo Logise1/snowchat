@@ -206,45 +206,41 @@
             </div>
 
             <!-- LEADERBOARD PAGE -->
-            <div id="page-rank" class="hidden p-6 space-y-6 pb-24 animate-slide-up">
-                <h2 class="text-3xl font-black text-slate-900">Ranking <span class="text-purple-600">Global</span></h2>
-                <div class="bg-white rounded-2xl p-1 flex border border-slate-100 shadow-sm">
-                    <button id="btn-rank-xp" onclick="loadLeaderboard('xp')"
-                        class="flex-1 py-2 rounded-xl text-sm font-bold bg-slate-900 text-white shadow transition-all">Puntos
-                        XP</button>
-                    <button id="btn-rank-km" onclick="loadLeaderboard('km')"
-                        class="flex-1 py-2 rounded-xl text-sm font-bold text-slate-400 hover:text-slate-900 transition-all">Distancia</button>
+            <!-- LEADERBOARD PAGE (+ Integrated Shop) -->
+            <div id="page-rank"
+                class="hidden p-6 pb-24 animate-slide-up flex flex-col gap-6 h-[calc(100vh-80px)] overflow-y-auto no-scrollbar">
+
+                <div>
+                    <h2 class="text-3xl font-black text-slate-900 mb-2">Ranking <span
+                            class="text-purple-600">Global</span></h2>
+                    <div class="bg-white rounded-2xl p-1 flex border border-slate-100 shadow-sm">
+                        <button id="btn-rank-xp" onclick="loadLeaderboard('xp')"
+                            class="flex-1 py-2 rounded-xl text-sm font-bold bg-slate-900 text-white shadow transition-all">Puntos
+                            XP</button>
+                        <button id="btn-rank-km" onclick="loadLeaderboard('km')"
+                            class="flex-1 py-2 rounded-xl text-sm font-bold text-slate-400 hover:text-slate-900 transition-all">Distancia</button>
+                    </div>
                 </div>
-                <div id="leaderboard-list" class="space-y-3"></div>
+
+                <div id="leaderboard-list" class="space-y-3 min-h-[200px]"></div>
+
+                <!-- Shop Section -->
+                <div class="pt-6 border-t border-slate-100">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-xl font-black text-slate-900">Tienda de Puntos</h3>
+                        <div class="bg-yellow-100 px-3 py-1 rounded-full text-yellow-700 font-bold text-xs">
+                            Tus XP: <span id="shop-user-xp">0</span>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-3" id="rank-shop-list">
+                        <!-- Items Injected Here -->
+                    </div>
+                </div>
             </div>
 
             <!-- SHOP PAGE -->
-            <div id="page-shop" class="hidden p-6 space-y-6 pb-24 animate-slide-up">
-                <div class="flex items-center justify-between">
-                    <h2 class="text-3xl font-black text-slate-900">Tienda</h2>
-                    <div class="bg-yellow-100 px-3 py-1 rounded-full text-yellow-700 font-bold text-sm">
-                        <i class="fa-solid fa-coins mr-1"></i> <span id="shop-user-xp">0</span> XP
-                    </div>
-                </div>
 
-                <p class="text-sm text-slate-500 font-medium">Usa tus XP ganados en las pistas para personalizar tu
-                    perfil.</p>
-
-                <div class="grid grid-cols-2 gap-4" id="shop-list">
-                    <!-- Items injected by JS -->
-                    <!-- Example -->
-                    <div
-                        class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col items-center gap-3">
-                        <div class="w-12 h-12 bg-purple-500 rounded-full"></div>
-                        <div class="text-center">
-                            <h4 class="font-bold text-slate-900 text-sm">Color Púrpura</h4>
-                            <p class="text-xs text-slate-400 font-bold">500 XP</p>
-                        </div>
-                        <button
-                            class="w-full py-2 bg-slate-900 text-white rounded-xl text-xs font-bold">Comprar</button>
-                    </div>
-                </div>
-            </div>
 
         </main>
 
@@ -261,12 +257,6 @@
                 class="nav-item flex-1 flex flex-col items-center gap-1 p-2 text-slate-300 hover:text-slate-500 transition-all transform hover:scale-110">
                 <i class="fa-solid fa-trophy text-xl"></i>
                 <span class="text-[10px] font-bold">Ranking</span>
-            </button>
-            <div class="w-px h-8 bg-slate-100"></div>
-            <button onclick="nav('shop')"
-                class="nav-item flex-1 flex flex-col items-center gap-1 p-2 text-slate-300 hover:text-purple-500 transition-all transform hover:scale-110">
-                <i class="fa-solid fa-store text-xl"></i>
-                <span class="text-[10px] font-bold">Tienda</span>
             </button>
             <div class="w-px h-8 bg-slate-100"></div>
             <button onclick="logout()"

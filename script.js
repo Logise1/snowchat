@@ -877,7 +877,7 @@ window.closeResults = () => {
 
 window.nav = (page) => {
     // Hide all
-    ['home', 'rank', 'shop'].forEach(p => {
+    ['home', 'rank'].forEach(p => {
         const el = document.getElementById(`page-${p}`);
         if (el) el.classList.add('hidden');
     });
@@ -892,12 +892,47 @@ window.nav = (page) => {
     const cur = event.currentTarget || document.querySelector(`.nav-item[onclick="nav('${page}')"]`);
     if (cur) {
         cur.classList.remove('text-slate-300');
-        if (page === 'shop') cur.classList.add('text-purple-600', 'active', 'scale-110');
-        else cur.classList.add('text-blue-600', 'active', 'scale-110');
+        cur.classList.add('text-blue-600', 'active', 'scale-110');
     }
 
-    if (page === 'shop') loadShop();
-    if (page === 'rank') loadLeaderboard('xp');
+    if (page === 'rank') {
+        loadLeaderboard('xp');
+        loadShopInRank();
+    }
+};
+
+window.loadShopInRank = () => {
+    const list = document.getElementById('rank-shop-list'); // changed id
+    if (!list) return;
+
+    list.innerHTML = '';
+
+    // Header for Shop Section in Rank Page
+    // ... logic moved to HTML structure update ...
+
+    const owned = state.userData.items || [];
+
+    SHOP_ITEMS.forEach(item => {
+        const isOwned = owned.includes(item.id);
+        const canBuy = (state.userData.xp || 0) >= item.cost;
+
+        const card = document.createElement('div');
+        card.className = "bg-white p-2 rounded-xl shadow-sm border border-slate-100 flex flex-col items-center gap-1 relative overflow-hidden";
+        card.innerHTML = `
+            <div class="w-8 h-8 ${item.color} rounded-full flex items-center justify-center text-white text-xs shadow-md">
+                <i class="fa-solid ${item.icon}"></i>
+            </div>
+            <div class="text-center z-10 w-full">
+                <h4 class="font-bold text-slate-900 text-[10px] truncate max-w-full">${item.name}</h4>
+                <p class="text-[9px] text-slate-400 font-bold">${isOwned ? 'OK' : item.cost + ' XP'}</p>
+            </div>
+            <button onclick="buyItem('${item.id}')" ${isOwned ? 'disabled' : ''} 
+                class="w-full py-1 rounded-lg text-[9px] font-bold transition-all ${isOwned ? 'bg-green-50 text-green-600' : (canBuy ? 'bg-slate-900 text-white' : 'bg-slate-50 text-slate-300')}">
+                ${isOwned ? '<i class="fa-solid fa-check"></i>' : 'Comprar'}
+            </button>
+        `;
+        list.appendChild(card);
+    });
 };
 
 const SHOP_ITEMS = [
