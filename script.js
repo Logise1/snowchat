@@ -1254,34 +1254,63 @@ function renderVoiceUsers(users) {
 }
 
 function listenForMessages() {
-    // Listen for stream (latest 8)
+    // Increase limit to handle bursts
     const q = query(
         collection(db, "voice_stream"),
         orderBy('ts', 'desc'),
-        limit(8)
+        limit(20)
     );
 
     let initialLoad = true;
 
+    // Ensure we don't have multiple listeners
+    if (state.voiceChat.unsubMessages) {
+        state.voiceChat.unsubMessages();
+    }
+
     state.voiceChat.unsubMessages = onSnapshot(q, (snap) => {
         if (initialLoad) {
             initialLoad = false;
+            // Mark existing as processed so we don't play them if they reappear (unlikely with stream)
+            snap.docs.forEach(d => state.voiceChat.processedIds.add(d.id));
             return;
         }
+
+        const newChunks = [];
 
         snap.docChanges().forEach(change => {
             if (change.type === 'added') {
                 const d = change.doc.data();
+                const id = change.doc.id;
+
+                // Dedup and Self-Filter
+                if (state.voiceChat.processedIds.has(id)) return;
                 if (d.uid === state.user.uid) return;
 
-                // Simpler queue, play all valid
-                queueAudio(d.audio, d.sender);
+                state.voiceChat.processedIds.add(id);
+
+                // Add to batch for sorting
+                newChunks.push({
+                    data: d,
+                    ts: d.ts?.seconds || 0 // Handle timestamp safely
+                });
             }
+        });
+
+        // CRITICAL: Sort by Timestamp ASCENDING to fix "Reverse Speech"
+        // The query is DESC (for latest), but we must play oldest->newest
+        newChunks.sort((a, b) => a.ts - b.ts);
+
+        newChunks.forEach(item => {
+            queueAudio(item.data.audio, item.data.sender);
         });
     });
 }
 
 function queueAudio(base64, sender) {
+    // Basic validation
+    if (!base64) return;
+
     const audio = new Audio(base64);
     audio.senderName = sender;
     state.voiceChat.audioQueue.push(audio);
@@ -1290,21 +1319,39 @@ function queueAudio(base64, sender) {
 
 function processQueue() {
     if (state.voiceChat.isPlaying || state.voiceChat.audioQueue.length === 0) return;
+
     state.voiceChat.isPlaying = true;
     const audio = state.voiceChat.audioQueue.shift();
 
     // UI: Who is talking
-    // We could add a visual indicator here
+    const status = document.getElementById('mic-status');
+    const originalText = status ? status.innerText : "";
 
-    audio.play().catch(e => {
-        state.voiceChat.isPlaying = false;
-        processQueue();
-    }).finally(() => {
-        audio.onended = () => {
+    // Only update status if it's not "TRANSMITIENDO" (me)
+    if (status && !state.voiceChat.micOpen) {
+        status.innerText = `${audio.senderName} HABLANDO...`;
+        status.classList.add('text-blue-400', 'animate-pulse');
+    }
+
+    audio.play()
+        .then(() => {
+            audio.onended = () => {
+                state.voiceChat.isPlaying = false;
+
+                // Reset UI if queue empty and not me
+                if (status && !state.voiceChat.micOpen && state.voiceChat.audioQueue.length === 0) {
+                    status.innerText = "CANAL ABIERTO";
+                    status.classList.remove('text-blue-400', 'animate-pulse');
+                }
+
+                processQueue();
+            };
+        })
+        .catch(e => {
+            console.error("Playback Error", e);
             state.voiceChat.isPlaying = false;
             processQueue();
-        };
-    });
+        });
 }
 
 // --- PTT LOGIC ---
