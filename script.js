@@ -875,6 +875,13 @@ window.closeResults = () => {
     loadProfile();
 };
 
+const SHOP_ITEMS = [
+    { id: 'color_purple', name: 'Tema Púrpura', type: 'color', cost: 500, icon: 'fa-palette', color: 'bg-purple-500' },
+    { id: 'color_green', name: 'Tema Verde', type: 'color', cost: 500, icon: 'fa-palette', color: 'bg-green-500' },
+    { id: 'title_pro', name: 'Título: PRO Rider', type: 'title', cost: 1000, icon: 'fa-id-badge', color: 'bg-slate-900' },
+    { id: 'avatar_wolf', name: 'Avatar Lobo', type: 'avatar', cost: 2000, icon: 'fa-dog', color: 'bg-blue-600' }
+];
+
 window.nav = (page) => {
     // Hide all
     ['home', 'rank'].forEach(p => {
@@ -897,18 +904,22 @@ window.nav = (page) => {
 
     if (page === 'rank') {
         loadLeaderboard('xp');
-        loadShopInRank();
+        setTimeout(loadShopInRank, 50);
     }
 };
 
 window.loadShopInRank = () => {
-    const list = document.getElementById('rank-shop-list'); // changed id
-    if (!list) return;
+    const list = document.getElementById('rank-shop-list');
+    if (!list) return console.log("Shop container missing");
 
     list.innerHTML = '';
 
-    // Header for Shop Section in Rank Page
-    // ... logic moved to HTML structure update ...
+    if (!state.userData) {
+        list.innerHTML = '<div class="col-span-2 text-center text-xs text-slate-400">Cargando perfil...</div>';
+        return;
+    }
+
+    document.getElementById('shop-user-xp').innerText = state.userData.xp || 0;
 
     const owned = state.userData.items || [];
 
@@ -934,13 +945,6 @@ window.loadShopInRank = () => {
         list.appendChild(card);
     });
 };
-
-const SHOP_ITEMS = [
-    { id: 'color_purple', name: 'Tema Púrpura', type: 'color', cost: 500, icon: 'fa-palette', color: 'bg-purple-500' },
-    { id: 'color_green', name: 'Tema Verde', type: 'color', cost: 500, icon: 'fa-palette', color: 'bg-green-500' },
-    { id: 'title_pro', name: 'Título: PRO Rider', type: 'title', cost: 1000, icon: 'fa-id-badge', color: 'bg-slate-900' },
-    { id: 'avatar_wolf', name: 'Avatar Lobo', type: 'avatar', cost: 2000, icon: 'fa-dog', color: 'bg-blue-600' }
-];
 
 window.loadShop = () => {
     document.getElementById('shop-user-xp').innerText = state.userData.xp || 0;
