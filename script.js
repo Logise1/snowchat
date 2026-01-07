@@ -1191,6 +1191,68 @@ async function initVoiceConnection() {
     processVoiceSystemMessage("Canal de Voz Abierto");
 }
 
+function leaveVoiceChat() {
+    state.voiceChat.active = false;
+    setMicState(false); // Stop recorder
+
+    if (state.voiceChat.unsubMessages) state.voiceChat.unsubMessages();
+    if (state.voiceChat.unsubPresence) state.voiceChat.unsubPresence();
+
+    // Remove presence
+    try {
+        if (state.user) deleteDoc(doc(db, "voice_presence", state.user.uid));
+    } catch (e) { }
+
+    // UI Reset
+    const btn = document.getElementById('btn-global-voice');
+    if (btn) {
+        btn.classList.remove('bg-indigo-500', 'text-white', 'pulse-btn');
+        btn.classList.add('bg-white', 'text-slate-400');
+        btn.innerHTML = '<i class="fa-solid fa-microphone-slash"></i>';
+    }
+    document.getElementById('voice-overlay').classList.add('hidden');
+    processVoiceSystemMessage("Radio desconectada");
+}
+
+async function joinVoicePresence() {
+    if (!state.user) return;
+    const ref = doc(db, "voice_presence", state.user.uid);
+    await setDoc(ref, {
+        username: state.userData.username,
+        onlineAt: serverTimestamp(),
+        uid: state.user.uid
+    });
+
+    state.voiceChat.unsubPresence = onSnapshot(collection(db, "voice_presence"), (snap) => {
+        const users = snap.docs.map(d => d.data());
+        renderVoiceUsers(users);
+    });
+}
+
+function renderVoiceUsers(users) {
+    const list = document.getElementById('voice-list-container');
+    if (!list) return;
+    list.innerHTML = '';
+
+    users.sort((a, b) => (a.uid === state.user.uid ? -1 : 1));
+
+    if (users.length === 0) {
+        list.innerHTML = '<div class="text-xs text-slate-500 text-center py-2">Canal Vacío</div>';
+        return;
+    }
+
+    users.forEach(u => {
+        const el = document.createElement('div');
+        el.className = "flex items-center gap-2 mb-2 animate-slide-up";
+        const isMe = u.uid === state.user.uid;
+        el.innerHTML = `
+            <div class="w-2 h-2 rounded-full ${isMe ? 'bg-green-400' : 'bg-blue-400'} shadow-[0_0_5px_rgba(34,197,94,0.5)]"></div>
+            <span class="${isMe ? 'text-white' : 'text-slate-300'} text-xs font-bold truncate">${u.username} ${isMe ? '(Tú)' : ''}</span>
+         `;
+        list.appendChild(el);
+    });
+}
+
 function listenForMessages() {
     // Listen for stream (latest 8)
     const q = query(
