@@ -206,7 +206,7 @@
             </div>
 
             <!-- LEADERBOARD PAGE -->
-            <!-- LEADERBOARD PAGE (+ Integrated Shop) -->
+            <!-- LEADERBOARD PAGE -->
             <div id="page-rank"
                 class="hidden p-6 pb-24 animate-slide-up flex flex-col gap-6 h-[calc(100vh-80px)] overflow-y-auto no-scrollbar">
 
@@ -223,24 +223,47 @@
                 </div>
 
                 <div id="leaderboard-list" class="space-y-3 min-h-[200px]"></div>
+            </div>
 
-                <!-- Shop Section -->
-                <div class="pt-6 border-t border-slate-100">
-                    <div class="flex items-center justify-between mb-4">
-                        <h3 class="text-xl font-black text-slate-900">Tienda de Puntos</h3>
-                        <div class="bg-yellow-100 px-3 py-1 rounded-full text-yellow-700 font-bold text-xs">
-                            Tus XP: <span id="shop-user-xp">0</span>
-                        </div>
+            <!-- PROFILE PAGE -->
+            <div id="page-profile"
+                class="hidden p-6 pb-24 animate-slide-up flex flex-col gap-6 h-[calc(100vh-80px)] overflow-y-auto no-scrollbar">
+                <h2 class="text-3xl font-black text-slate-900">Mi <span class="text-blue-600">Perfil</span></h2>
+
+                <!-- Profile Card -->
+                <div
+                    class="bg-white rounded-[2rem] p-8 shadow-xl shadow-slate-100 border border-slate-50 flex flex-col items-center text-center relative overflow-hidden">
+                    <div
+                        class="absolute top-0 left-0 w-full h-24 bg-gradient-to-br from-blue-500 to-purple-600 opacity-10">
                     </div>
 
-                    <div class="grid grid-cols-2 gap-3" id="rank-shop-list">
-                        <!-- Items Injected Here -->
+                    <div class="w-32 h-32 rounded-full p-1 bg-white shadow-lg mb-4 relative z-10">
+                        <img id="profile-img"
+                            src="https://ui-avatars.com/api/?name=User&background=0D8ABC&color=fff&size=128"
+                            class="w-full h-full rounded-full object-cover bg-slate-200" alt="Profile">
+                    </div>
+
+                    <h3 id="profile-name" class="text-2xl font-black text-slate-900 mb-1 relative z-10">Usuario</h3>
+                    <div
+                        class="inline-block px-3 py-1 bg-slate-900 text-white text-[10px] font-bold rounded-full mb-6 relative z-10">
+                        RANGO <span id="profile-rank-val">1</span> / 80
+                    </div>
+
+                    <!-- Stats -->
+                    <div class="grid grid-cols-2 gap-4 w-full relative z-10">
+                        <div class="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                            <div class="text-slate-400 text-[10px] font-bold uppercase tracking-wider mb-1">Total KM
+                            </div>
+                            <div id="profile-km" class="text-xl font-black text-slate-800">0.0</div>
+                        </div>
+                        <div class="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                            <div class="text-slate-400 text-[10px] font-bold uppercase tracking-wider mb-1">Tiempo Total
+                            </div>
+                            <div id="profile-time" class="text-xl font-black text-slate-800">0h 0m</div>
+                        </div>
                     </div>
                 </div>
             </div>
-
-            <!-- SHOP PAGE -->
-
 
         </main>
 
@@ -258,6 +281,13 @@
                 <i class="fa-solid fa-trophy text-xl"></i>
                 <span class="text-[10px] font-bold">Ranking</span>
             </button>
+            <div class="w-px h-8 bg-slate-100"></div>
+            <button onclick="nav('profile')"
+                class="nav-item flex-1 flex flex-col items-center gap-1 p-2 text-slate-300 hover:text-blue-500 transition-all transform hover:scale-110">
+                <i class="fa-solid fa-user text-xl"></i>
+                <span class="text-[10px] font-bold">Mi Perfil</span>
+            </button>
+            <div class="w-px h-8 bg-slate-100"></div>
             <div class="w-px h-8 bg-slate-100"></div>
             <button onclick="logout()"
                 class="nav-item flex-1 flex flex-col items-center gap-1 p-2 text-slate-300 hover:text-red-400 transition-all transform hover:scale-110">

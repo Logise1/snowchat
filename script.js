@@ -809,8 +809,12 @@ async function finishRun() {
         const newTotalXP = (state.userData.xp || 0) + totalXP;
         const newLevel = Math.floor(Math.sqrt(newTotalXP / 100)) + 1; // Simple RPG curve: Level = sqrt(XP/100)
 
+        // Calculate run duration in seconds
+        const runDurationSec = Math.floor((Date.now() - state.run.startTime) / 1000);
+
         await updateDoc(doc(db, "users", state.user.uid), {
             totalDist: increment(distKm),
+            totalTime: increment(runDurationSec),
             xp: increment(totalXP),
             level: newLevel
         });
@@ -818,6 +822,7 @@ async function finishRun() {
         // Update local state immediately
         state.userData.xp = newTotalXP;
         state.userData.level = newLevel;
+        state.userData.totalTime = (state.userData.totalTime || 0) + runDurationSec;
         document.getElementById('home-lvl').innerText = newLevel;
 
     } catch (e) {
@@ -875,15 +880,9 @@ window.closeResults = () => {
     loadProfile();
 };
 
-const SHOP_ITEMS = [
-    { id: 'color_purple', name: 'Tema Púrpura', type: 'color', cost: 500, icon: 'fa-palette', color: 'bg-purple-500' },
-    { id: 'color_green', name: 'Tema Verde', type: 'color', cost: 500, icon: 'fa-palette', color: 'bg-green-500' },
-    { id: 'title_pro', name: 'Título: PRO Rider', type: 'title', cost: 1000, icon: 'fa-id-badge', color: 'bg-slate-900' },
-    { id: 'avatar_wolf', name: 'Avatar Lobo', type: 'avatar', cost: 2000, icon: 'fa-dog', color: 'bg-blue-600' }
-];
 window.nav = (page) => {
     // Hide all
-    ['home', 'rank'].forEach(p => {
+    ['home', 'rank', 'profile'].forEach(p => {
         const el = document.getElementById(`page-${p}`);
         if (el) el.classList.add('hidden');
     });
@@ -898,88 +897,41 @@ window.nav = (page) => {
     const cur = event.currentTarget || document.querySelector(`.nav-item[onclick="nav('${page}')"]`);
     if (cur) {
         cur.classList.remove('text-slate-300');
-        cur.classList.add('text-blue-600', 'active', 'scale-110');
+        // Profile gets blue, Rank gets slate (handled above), Home gets blue
+        cur.classList.add(page === 'rank' ? 'text-slate-500' : 'text-blue-600', 'active', 'scale-110');
+        if (page === 'rank') cur.classList.add('text-slate-900'); // active rank color
     }
 
-    if (page === 'rank') {
-        loadLeaderboard('xp');
-        setTimeout(loadShopInRank, 50);
-    }
+    if (page === 'rank') loadLeaderboard('xp');
+    if (page === 'profile') loadProfilePage();
 };
 
-window.loadShopInRank = () => {
-    const list = document.getElementById('rank-shop-list');
-    if (!list) return console.log("Shop container missing");
+window.loadProfilePage = () => {
+    if (!state.userData) return;
 
-    list.innerHTML = '';
+    document.getElementById('profile-name').innerText = state.userData.username || "Usuario";
 
-    if (!state.userData) {
-        list.innerHTML = '<div class="col-span-2 text-center text-xs text-slate-400">Cargando perfil...</div>';
-        return;
-    }
+    // Level / Rank Logic: "Rango entre 80"
+    // Assuming level is 1-80. Or we map XP to 1-80. 
+    // Existing logic: Level = sqrt(XP/100) + 1. 
+    // Let's just Clamp it to 80 for display as requested "entre 80".
+    const rawLvl = state.userData.level || 1;
+    const dispLvl = Math.min(rawLvl, 80);
+    document.getElementById('profile-rank-val').innerText = dispLvl;
 
-    document.getElementById('shop-user-xp').innerText = state.userData.xp || 0;
+    // Stats
+    const dist = (state.userData.totalDist || 0).toFixed(1) + " km";
+    document.getElementById('profile-km').innerText = dist;
 
-    const owned = state.userData.items || [];
+    // Time
+    const seconds = state.userData.totalTime || 0;
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    document.getElementById('profile-time').innerText = `${h}h ${m}m`;
 
-    SHOP_ITEMS.forEach(item => {
-        const isOwned = owned.includes(item.id);
-        const canBuy = (state.userData.xp || 0) >= item.cost;
-
-        const card = document.createElement('div');
-        card.className = "bg-white p-2 rounded-xl shadow-sm border border-slate-100 flex flex-col items-center gap-1 relative overflow-hidden";
-        card.innerHTML = `
-            <div class="w-8 h-8 ${item.color} rounded-full flex items-center justify-center text-white text-xs shadow-md">
-                <i class="fa-solid ${item.icon}"></i>
-            </div>
-            <div class="text-center z-10 w-full">
-                <h4 class="font-bold text-slate-900 text-[10px] truncate max-w-full">${item.name}</h4>
-                <p class="text-[9px] text-slate-400 font-bold">${isOwned ? 'OK' : item.cost + ' XP'}</p>
-            </div>
-            <button onclick="buyItem('${item.id}')" ${isOwned ? 'disabled' : ''} 
-                class="w-full py-1 rounded-lg text-[9px] font-bold transition-all ${isOwned ? 'bg-green-50 text-green-600' : (canBuy ? 'bg-slate-900 text-white' : 'bg-slate-50 text-slate-300')}">
-                ${isOwned ? '<i class="fa-solid fa-check"></i>' : 'Comprar'}
-            </button>
-        `;
-        list.appendChild(card);
-    });
-};
-
-
-
-window.buyItem = async (itemId) => {
-    const item = SHOP_ITEMS.find(i => i.id === itemId);
-    if (!item) return;
-
-    if ((state.userData.xp || 0) < item.cost) {
-        return alert("No tienes suficientes XP.");
-    }
-
-    if (confirm(`¿Comprar ${item.name} por ${item.cost} XP?`)) {
-        try {
-            // Deduct XP? usually shop items don't consume XP level progress, but "Points".
-            // User said "comprar cosas que ganas con puntos y xp".
-            // Let's assume we spend XP for now based on request "compra cosas... con puntos y xp".
-            // Or maybe XP is strictly for level and separate "Coins"?
-            // Simpler: Spend XP (like Souls).
-
-            await updateDoc(doc(db, "users", state.user.uid), {
-                xp: increment(-item.cost),
-                items: arrayUnion(itemId)
-            });
-
-            state.userData.xp -= item.cost;
-            if (!state.userData.items) state.userData.items = [];
-            state.userData.items.push(itemId);
-
-            loadShopInRank(); // Refresh UI
-            alert("¡Compra realizada!");
-
-        } catch (e) {
-            console.error(e);
-            alert("Error en la compra.");
-        }
-    }
+    // Avatar
+    const imgParam = encodeURIComponent(state.userData.username || 'User');
+    document.getElementById('profile-img').src = `https://ui-avatars.com/api/?name=${imgParam}&background=0D8ABC&color=fff&size=128&bold=true`;
 };
 
 // --- CREATOR MODE ---
