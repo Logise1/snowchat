@@ -213,6 +213,57 @@ async function loadProfile() {
 }
 
 // --- GPS SYSTEM ---
+function startGPS() {
+    if (navigator.geolocation) {
+        let lastPos = null;
+        let lastTime = 0;
+        const alpha = 0.2; // Smoothing factor
+
+        state.gpsWatchId = navigator.geolocation.watchPosition(pos => {
+            const now = Date.now();
+            let speed = pos.coords.speed; // m/s
+
+            if (lastPos) {
+                const d = getDist(lastPos, { lat: pos.coords.latitude, lng: pos.coords.longitude }); // meters
+                const t = (now - lastTime) / 1000; // seconds
+
+                if (t > 0) {
+                    const manualSpeed = d / t;
+                    if (speed === null || speed < 0.5) {
+                        speed = manualSpeed;
+                    } else {
+                        speed = (speed * 0.4) + (manualSpeed * 0.6);
+                    }
+                }
+            }
+
+            const currentSpeed = state.gps.speed || 0;
+            let newSpeed = speed || 0;
+            newSpeed = (currentSpeed * (1 - alpha)) + (newSpeed * alpha);
+
+            state.gps = {
+                lat: pos.coords.latitude,
+                lng: pos.coords.longitude,
+                alt: pos.coords.altitude || 0,
+                speed: newSpeed, // smoothed
+                acc: pos.coords.accuracy,
+                heading: pos.coords.heading || 0
+            };
+
+            lastPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+            lastTime = now;
+
+            if (state.run.active) updateRunLoop();
+            if (state.creator.recording) updateCreatorRecording();
+        }, (err) => {
+            console.error("GPS Error", err);
+        }, {
+            enableHighAccuracy: true,
+            maximumAge: 0,
+            timeout: 10000
+        });
+    }
+}
 
 // --- VOICE CONTROL SYSTEM ---
 function initVoiceControl() {

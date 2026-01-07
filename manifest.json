@@ -1,0 +1,17 @@
+{
+  "name": "SnowTrack - Rastreador de Pistas",
+  "short_name": "SnowTrack",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#0097b2",
+  "description": "Rastrea, crea y compite en pistas de esquí con precisión GPS.",
+  "icons": [
+    {
+      "src": "512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ],
+  "orientation": "portrait-primary"
+}
