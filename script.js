@@ -1147,198 +1147,324 @@ function calcTotalDist(pts) {
     return d / 1000;
 }
 
-// --- VOICE CHAT (WebRTC) ---
-const rtcConfig = {
-    iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' },
-        { urls: 'stun:stun2.l.google.com:19302' },
-        { urls: 'stun:stun3.l.google.com:19302' },
-        { urls: 'stun:stun4.l.google.com:19302' }
-    ],
-    iceCandidatePoolSize: 10
-};
+// --- WALKIE TALKIE (PTT) SYSTEM ---
+// Protocol: Firestore Base64 Audio Messages (Async/Store-and-Forward)
+// This replaces WebRTC to avoid NAT/Stun issues and provide a reliable "Radio" feel.
 
 state.voiceChat = {
-    localStream: null,
-    connections: {},
     active: false,
-    unsubSignaling: null
+    recorder: null,
+    chunks: [],
+    unsubMessages: null,
+    unsubPresence: null,
+    audioQueue: [],
+    isPlaying: false
 };
 
 window.toggleGlobalVoice = async () => {
-    // If active, just show overlay
     if (state.voiceChat.active) {
-        document.getElementById('voice-overlay').classList.remove('hidden');
-        return;
-    }
+        leaveVoiceChat();
+    } else {
+        try {
+            // Request Mic Permission (and check support)
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            // Stop immediately, we just wanted permission
+            stream.getTracks().forEach(t => t.stop());
 
-    // Join
-    try {
-        // Enhanced Audio Constraints
-        const constraints = {
-            audio: {
-                echoCancellation: true,
-                noiseSuppression: true,
-                autoGainControl: true,
-                channelCount: 1, // Mono is usually better for voice chat stability
-                sampleRate: 48000,
-                sampleSize: 16
-            },
-            video: false
-        };
+            state.voiceChat.active = true;
+            document.getElementById('voice-overlay').classList.remove('hidden');
 
-        state.voiceChat.localStream = await navigator.mediaDevices.getUserMedia(constraints);
-        state.voiceChat.active = true;
+            // UI Feedback
+            const btn = document.getElementById('btn-global-voice');
+            btn.classList.remove('bg-white', 'text-slate-400');
+            btn.classList.add('bg-orange-500', 'text-white', 'pulse-btn');
+            btn.innerHTML = '<i class="fa-solid fa-walkie-talkie"></i>';
 
-        // UI Update
-        const btn = document.getElementById('btn-global-voice');
-        btn.classList.remove('bg-white', 'text-slate-400');
-        btn.classList.add('bg-red-500', 'text-white', 'pulse-btn');
-        btn.innerHTML = '<i class="fa-solid fa-microphone"></i>';
+            initDraggable('voice-overlay', 'voice-header');
+            initHoldToLeave();
 
-        // Show Overlay
-        document.getElementById('voice-overlay').classList.remove('hidden');
-        initDraggable('voice-overlay', 'voice-header');
-        initHoldToLeave();
+            // Join Presence & Listen
+            joinVoicePresence();
+            listenForMessages();
 
-        // Init Listener
-        startSignalListener();
+            // Notify
+            processVoiceSystemMessage("Walkie Talkie Conectado");
 
-        // Join Signaling
-        joinVoiceRoom("global");
-
-    } catch (e) {
-        console.error(e);
-        alert("No se pudo acceder al micrófono. Verifica los permisos.");
+        } catch (e) {
+            console.error(e);
+            alert("Acceso al micrófono denegado. No puedes usar el Walkie Talkie.");
+        }
     }
 };
 
 window.minimizeVoice = () => {
-    // Just toggle the list and controls visibility via CSS class
     document.getElementById('voice-overlay').classList.toggle('voice-minimized');
 };
 
-async function leaveVoiceChat() {
+function leaveVoiceChat() {
     state.voiceChat.active = false;
-    if (state.voiceChat.localStream) {
-        state.voiceChat.localStream.getTracks().forEach(t => t.stop());
-        state.voiceChat.localStream = null;
-    }
-    Object.values(state.voiceChat.connections).forEach(pc => pc.close());
-    state.voiceChat.connections = {};
-    if (state.voiceChat.unsubSignaling) state.voiceChat.unsubSignaling();
+    if (state.voiceChat.unsubMessages) state.voiceChat.unsubMessages();
+    if (state.voiceChat.unsubPresence) state.voiceChat.unsubPresence();
 
-    // Remove audio elements
-    document.querySelectorAll('audio[id^="audio-"]').forEach(el => el.remove());
+    // Remove presence
+    try {
+        if (state.user) deleteDoc(doc(db, "voice_presence", state.user.uid));
+    } catch (e) { }
 
     // UI Reset
     const btn = document.getElementById('btn-global-voice');
-    btn.classList.remove('bg-red-500', 'text-white', 'pulse-btn');
-    btn.classList.add('bg-white', 'text-slate-400');
-    btn.innerHTML = '<i class="fa-solid fa-microphone-slash"></i>';
-
+    if (btn) {
+        btn.classList.remove('bg-orange-500', 'text-white', 'pulse-btn');
+        btn.classList.add('bg-white', 'text-slate-400');
+        btn.innerHTML = '<i class="fa-solid fa-microphone-slash"></i>';
+    }
     document.getElementById('voice-overlay').classList.add('hidden');
-
-    // Remove from DB presence
-    try {
-        if (state.user) {
-            await deleteDoc(doc(db, "voice_rooms", "global", "peers", state.user.uid));
-        }
-    } catch (e) { }
+    processVoiceSystemMessage("Radio desconectada");
 }
 
-async function joinVoiceRoom(roomId) {
-    const roomRef = doc(db, "voice_rooms", roomId);
-    const peersRef = collection(roomRef, "peers");
-
-    // 1. Add myself with extra data
-    await setDoc(doc(peersRef, state.user.uid), {
-        joinedAt: serverTimestamp(),
-        id: state.user.uid,
-        username: state.userData.username || "User",
-        // level: state.userData.level || 1 // Optional
+async function joinVoicePresence() {
+    if (!state.user) return;
+    const ref = doc(db, "voice_presence", state.user.uid);
+    await setDoc(ref, {
+        username: state.userData.username,
+        onlineAt: serverTimestamp(),
+        uid: state.user.uid
     });
 
-    // 2. Listen for other peers
-    state.voiceChat.unsubSignaling = onSnapshot(peersRef, (snap) => {
-        // Render Users List
-        renderVoiceUsers(snap.docs);
+    // Listen for others - clean up old presence if needed could be done by Cloud Functions
+    // For now just listen
+    state.voiceChat.unsubPresence = onSnapshot(collection(db, "voice_presence"), (snap) => {
+        const users = snap.docs.map(d => d.data());
+        // Filter out stale users? (Optional optimization)
+        renderVoiceUsers(users);
+    });
+}
 
-        snap.docChanges().forEach(async (change) => {
-            if (change.type === "added") {
-                const peerId = change.doc.id;
-                if (peerId !== state.user.uid) {
-                    if (state.user.uid < peerId) {
-                        console.log("Initiating call to", peerId);
-                        createPeerConnection(peerId, true);
-                    }
+function renderVoiceUsers(users) {
+    const list = document.getElementById('voice-list-container');
+    if (!list) return;
+    list.innerHTML = '';
+
+    // Sort me first
+    users.sort((a, b) => (a.uid === state.user.uid ? -1 : 1));
+
+    if (users.length === 0) {
+        list.innerHTML = '<div class="text-xs text-slate-500 text-center py-2">Canal Vacío</div>';
+        return;
+    }
+
+    users.forEach(u => {
+        const el = document.createElement('div');
+        el.className = "flex items-center gap-2 mb-2 animate-slide-up";
+        const isMe = u.uid === state.user.uid;
+        el.innerHTML = `
+            <div class="w-2 h-2 rounded-full ${isMe ? 'bg-green-400' : 'bg-orange-400'} shadow-[0_0_5px_rgba(34,197,94,0.5)]"></div>
+            <span class="${isMe ? 'text-white' : 'text-slate-300'} text-xs font-bold truncate">${u.username} ${isMe ? '(Tú)' : ''}</span>
+         `;
+        list.appendChild(el);
+    });
+}
+
+// --- PTT LOGIC ---
+window.startPTT = async (e) => {
+    if (e && e.cancelable && e.type !== 'mousedown') e.preventDefault(); // allow default on mousedown for focus? NO.
+    // Prevent default on touch to avoid scrolling
+    if (e.type === 'touchstart') e.preventDefault();
+    if (e.type === 'mousedown') e.preventDefault();
+
+    if (!state.voiceChat.active || state.voiceChat.recorder) return;
+
+    try {
+        playTone(600, 0.05, 'sine'); // Start Click
+        playTone(800, 0.05, 'sine', 0.05);
+
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        state.voiceChat.recorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
+        state.voiceChat.chunks = [];
+
+        state.voiceChat.recorder.ondataavailable = (e) => {
+            if (e.data.size > 0) state.voiceChat.chunks.push(e.data);
+        };
+
+        state.voiceChat.recorder.onstop = async () => {
+            const blob = new Blob(state.voiceChat.chunks, { type: 'audio/webm;codecs=opus' });
+
+            // Clean up stream
+            stream.getTracks().forEach(track => track.stop());
+            state.voiceChat.recorder = null;
+
+            // Prepare Upload
+            const reader = new FileReader();
+            reader.readAsDataURL(blob);
+            reader.onloadend = async () => {
+                const base64 = reader.result;
+                try {
+                    await addDoc(collection(db, "voice_messages"), {
+                        sender: state.userData.username,
+                        uid: state.user.uid,
+                        audio: base64,
+                        createdAt: serverTimestamp()
+                    });
+                    playTone(800, 0.05, 'sine'); // End Click
+                    playTone(400, 0.05, 'sine', 0.05);
+                } catch (e) {
+                    console.error("Error sending audio", e);
                 }
-            }
-            if (change.type === "removed") {
-                const peerId = change.doc.id;
-                if (state.voiceChat.connections[peerId]) {
-                    state.voiceChat.connections[peerId].close();
-                    delete state.voiceChat.connections[peerId];
-                    const aud = document.getElementById(`audio-${peerId}`);
-                    if (aud) aud.remove();
+            };
+        };
+
+        state.voiceChat.recorder.start();
+
+        // UI
+        const btnInner = document.getElementById('ptt-btn-inner');
+        const status = document.getElementById('ptt-status');
+        btnInner.classList.remove('bg-slate-600', 'border-slate-700');
+        btnInner.classList.add('bg-red-600', 'border-red-500', 'scale-110', 'shadow-[0_0_30px_rgba(239,68,68,0.6)]');
+        status.innerText = "TRANSMITIENDO...";
+        status.classList.add('text-red-400', 'animate-pulse');
+        status.classList.remove('text-slate-400');
+
+    } catch (e) {
+        console.error("PTT Error", e);
+    }
+};
+
+window.stopPTT = (e) => {
+    if (e && e.cancelable) e.preventDefault();
+
+    if (state.voiceChat.recorder && state.voiceChat.recorder.state !== 'inactive') {
+        state.voiceChat.recorder.stop();
+
+        // UI Reset
+        const btnInner = document.getElementById('ptt-btn-inner');
+        const status = document.getElementById('ptt-status');
+        btnInner.classList.add('bg-slate-600', 'border-slate-700');
+        btnInner.classList.remove('bg-red-600', 'border-red-500', 'scale-110', 'shadow-[0_0_30px_rgba(239,68,68,0.6)]');
+        status.innerText = "MANTÉN PARA HABLAR";
+        status.classList.remove('text-red-400', 'animate-pulse');
+        status.classList.add('text-slate-400');
+    }
+};
+
+function listenForMessages() {
+    // Listen for new messages
+    // To avoid fetching old history, we might want a timestamp filter, but 'limit' is okay for now.
+    const q = query(collection(db, "voice_messages"), orderBy('createdAt', 'desc'), limit(5));
+
+    // We need to ignore the initial snapshot to avoid playing history
+    let initialLoad = true;
+
+    state.voiceChat.unsubMessages = onSnapshot(q, (snap) => {
+        if (initialLoad) {
+            initialLoad = false;
+            return;
+        }
+
+        snap.docChanges().forEach(change => {
+            if (change.type === 'added') {
+                const d = change.doc.data();
+                if (d.uid === state.user.uid) return; // Don't play own
+
+                // Only play recent (< 30s old) to be safe
+                const time = d.createdAt ? (d.createdAt.seconds * 1000) : Date.now();
+                if (Date.now() - time < 30000) {
+                    queueAudio(d.audio, d.sender);
                 }
             }
         });
     });
 }
 
-function renderVoiceUsers(docs) {
-    const container = document.getElementById('voice-list-container');
-    container.innerHTML = '';
+function queueAudio(base64, sender) {
+    const audio = new Audio(base64);
+    audio.senderName = sender;
+    state.voiceChat.audioQueue.push(audio);
+    processQueue();
+}
 
-    // Always add myself first? Or alphabetical. Let's do alphabetical.
-    const users = docs.map(d => d.data());
+function processQueue() {
+    if (state.voiceChat.isPlaying || state.voiceChat.audioQueue.length === 0) return;
 
-    // Ensure I am in the list if not pushed yet (local latency)
-    if (!users.find(u => u.id === state.user.uid)) {
-        users.push({ id: state.user.uid, username: state.userData.username + " (Tú)" });
-    }
+    state.voiceChat.isPlaying = true;
+    const audio = state.voiceChat.audioQueue.shift();
 
-    users.forEach(u => {
-        const row = document.createElement('div');
-        row.className = "voice-user-row key-" + u.id;
+    // UI: Who is talking
+    const status = document.getElementById('ptt-status');
+    const btnInner = document.getElementById('ptt-btn-inner');
 
-        // Initials
-        const initials = u.username.substring(0, 2).toUpperCase();
+    status.innerText = `${audio.senderName} HABLANDO...`;
+    status.className = "text-[10px] font-bold text-green-400 uppercase tracking-widest mt-2 animate-pulse";
 
-        row.innerHTML = `
-            <div class="user-avatar-voice ${u.id === state.user.uid ? 'border-2 border-white' : ''}">
-                ${initials}
-            </div>
-            <span class="text-slate-200 text-xs font-bold truncate">${u.username}</span>
-            ${u.id === state.user.uid ? '' : '<div class="ml-auto w-2 h-2 bg-green-400 rounded-full"></div>'}
-        `;
-        container.appendChild(row);
-    });
+    // Green glow on button
+    btnInner.classList.add('shadow-[0_0_30px_rgba(74,222,128,0.6)]', 'border-green-500');
+
+    // Play start squelch
+    playTone(1200, 0.05, 'square');
+
+    audio.play().catch(e => console.error("Audio Play Error", e))
+        .finally(() => {
+            // Wait for audio to finish, then:
+            audio.onended = () => {
+                // Play end squelch
+                playTone(1000, 0.05, 'square');
+                setTimeout(() => {
+                    playTone(800, 0.05, 'square');
+                }, 50);
+
+                state.voiceChat.isPlaying = false;
+
+                // Reset UI
+                status.innerText = "MANTÉN PARA HABLAR";
+                status.className = "text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-2";
+                btnInner.classList.remove('shadow-[0_0_30px_rgba(74,222,128,0.6)]', 'border-green-500');
+
+                processQueue();
+            };
+        });
+}
+
+function playTone(freq = 880, dur = 0.1, type = 'sine', delay = 0) {
+    try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = type;
+        osc.frequency.value = freq;
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        const t = ctx.currentTime + delay;
+        osc.start(t);
+        gain.gain.setValueAtTime(0.1, t);
+        gain.gain.exponentialRampToValueAtTime(0.00001, t + dur);
+        osc.stop(t + dur);
+    } catch (e) { }
+}
+
+function processVoiceSystemMessage(text) {
+    if (!window.speechSynthesis) return;
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'es-ES';
+    u.rate = 1.2;
+    window.speechSynthesis.speak(u);
 }
 
 // --- DRAGGABLE & HOLD LOGIC ---
 function initDraggable(elId, handleId) {
     const el = document.getElementById(elId);
     const handle = document.getElementById(handleId);
+    if (!el || !handle) return;
+
     let isDragging = false;
     let startX, startY, initialLeft, initialTop;
 
     const start = (e) => {
-        // e.preventDefault(); // Don't prevent default, might block clicks?
-        // Only prevent if target is handle
-        if (e.target.closest('button')) return; // Allow button clicks inside header
-
-        const clientX = e.clientX || e.touches[0].clientX;
-        const clientY = e.clientY || e.touches[0].clientY;
-
-        startX = clientX;
-        startY = clientY;
+        if (e.target.closest('button')) return;
+        const cX = e.clientX || e.touches[0].clientX;
+        const cY = e.clientY || e.touches[0].clientY;
+        startX = cX; startY = cY;
 
         const rect = el.getBoundingClientRect();
-        initialLeft = rect.left;
-        initialTop = rect.top;
+        initialLeft = rect.left; initialTop = rect.top;
 
         isDragging = true;
         el.style.cursor = 'grabbing';
@@ -1347,29 +1473,22 @@ function initDraggable(elId, handleId) {
     const move = (e) => {
         if (!isDragging) return;
         e.preventDefault();
+        const cX = e.clientX || e.touches[0].clientX;
+        const cY = e.clientY || e.touches[0].clientY;
 
-        const clientX = e.clientX || e.touches[0].clientX;
-        const clientY = e.clientY || e.touches[0].clientY;
-
-        const dx = clientX - startX;
-        const dy = clientY - startY;
-
+        const dx = cX - startX;
+        const dy = cY - startY;
         el.style.left = `${initialLeft + dx}px`;
         el.style.top = `${initialTop + dy}px`;
-        el.style.right = 'auto'; // Disable right positioning once moved
+        el.style.right = 'auto'; // Disable right positioning
     };
 
-    const end = () => {
-        isDragging = false;
-        el.style.cursor = 'grab';
-    };
+    const end = () => { isDragging = false; el.style.cursor = 'grab'; };
 
     handle.addEventListener('mousedown', start);
     handle.addEventListener('touchstart', start);
-
     window.addEventListener('mousemove', move);
     window.addEventListener('touchmove', move, { passive: false });
-
     window.addEventListener('mouseup', end);
     window.addEventListener('touchend', end);
 }
@@ -1377,15 +1496,13 @@ function initDraggable(elId, handleId) {
 function initHoldToLeave() {
     const btn = document.getElementById('btn-leave-hold');
     const bar = document.getElementById('leave-progress');
-    let timer = null;
-    let startTime = 0;
+    if (!btn || !bar) return;
 
-    // Duration: 2000ms
-    const DURATION = 2000;
+    let timer = null;
+    const DURATION = 1500;
 
     const startHold = (e) => {
-        e.preventDefault(); // prevent click?
-        startTime = Date.now();
+        if (e.cancelable) e.preventDefault();
         bar.style.transition = `width ${DURATION}ms linear`;
         bar.style.width = '100%';
 
@@ -1400,112 +1517,11 @@ function initHoldToLeave() {
         bar.style.width = '0%';
     };
 
-    btn.onmousedown = startHold;
-    btn.ontouchstart = startHold;
-
-    btn.onmouseup = endHold;
-    btn.onmouseleave = endHold;
-    btn.ontouchend = endHold;
-}
-
-// ... existing helpers ...
-
-function startSignalListener() {
-    const q = query(collection(db, "voice_rooms", "global", "signals"), where("to", "==", state.user.uid));
-
-    onSnapshot(q, (snap) => {
-        snap.docChanges().forEach(async (change) => {
-            if (change.type === 'added') {
-                const data = change.doc.data();
-                const fromId = data.from;
-
-                // Establish connection wrapper if not exists (responder side)
-                if (!state.voiceChat.connections[fromId]) {
-                    await createPeerConnection(fromId, false);
-                }
-
-                const pc = state.voiceChat.connections[fromId];
-
-                if (data.type === 'offer') {
-                    console.log("Received Offer from", fromId);
-                    await pc.setRemoteDescription(new RTCSessionDescription({ type: data.offer.type, sdp: data.offer.sd }));
-                    const answer = await pc.createAnswer();
-                    await pc.setLocalDescription(answer);
-
-                    await addDoc(collection(db, "voice_rooms", "global", "signals"), {
-                        from: state.user.uid,
-                        to: fromId,
-                        type: 'answer',
-                        answer: { type: answer.type, sd: answer.sdp }
-                    });
-                }
-                else if (data.type === 'answer') {
-                    console.log("Received Answer from", fromId);
-                    if (!pc.currentRemoteDescription) {
-                        await pc.setRemoteDescription(new RTCSessionDescription({ type: data.answer.type, sdp: data.answer.sd }));
-                    }
-                }
-                else if (data.type === 'candidate') {
-                    try {
-                        await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
-                    } catch (e) { console.log("Candidate error", e); }
-                }
-
-                // Delete consumed signal to clean up
-                deleteDoc(change.doc.ref);
-            }
-        });
-    });
-}
-
-async function createPeerConnection(peerId, initiator) {
-    if (state.voiceChat.connections[peerId]) return state.voiceChat.connections[peerId];
-
-    const pc = new RTCPeerConnection(rtcConfig);
-    state.voiceChat.connections[peerId] = pc;
-
-    // Add local tracks
-    if (state.voiceChat.localStream) {
-        state.voiceChat.localStream.getTracks().forEach(track => pc.addTrack(track, state.voiceChat.localStream));
-    }
-
-    // Handle remote tracks
-    pc.ontrack = (event) => {
-        console.log("Received remote track from", peerId);
-        if (!document.getElementById(`audio-${peerId}`)) {
-            const remoteAudio = document.createElement('audio');
-            remoteAudio.srcObject = event.streams[0];
-            remoteAudio.autoplay = true;
-            remoteAudio.id = `audio-${peerId}`;
-            document.body.appendChild(remoteAudio);
-        }
-    };
-
-    // ICE Candidates
-    pc.onicecandidate = async (event) => {
-        if (event.candidate) {
-            await addDoc(collection(db, "voice_rooms", "global", "signals"), {
-                from: state.user.uid,
-                to: peerId,
-                type: 'candidate',
-                candidate: event.candidate.toJSON()
-            });
-        }
-    };
-
-    if (initiator) {
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-
-        await addDoc(collection(db, "voice_rooms", "global", "signals"), {
-            from: state.user.uid,
-            to: peerId,
-            type: 'offer',
-            offer: { type: offer.type, sd: offer.sdp }
-        });
-    }
-
-    return pc;
+    btn.addEventListener('mousedown', startHold);
+    btn.addEventListener('touchstart', startHold);
+    btn.addEventListener('mouseup', endHold);
+    btn.addEventListener('mouseleave', endHold);
+    btn.addEventListener('touchend', endHold);
 }
 
 // --- WEATHER LOGIC ---
@@ -1620,8 +1636,16 @@ function renderSlopes(pistasData) {
                 // Subtracks check (if object has nested objects with @nombre)
                 // For now simplifying to just main track as requested "individual info" usually means the named entities.
 
+                // Store in global map for easy retrieval
+                // We use a safe key replacing spaces to avoid quote issues in onclick, or just look up by raw name
+                if (!state.slopesMap) state.slopesMap = {};
+                state.slopesMap[track["@nombre"]] = { ...track, zona: zonaName };
+
+                // Encoding name for safe function call
+                const safeName = track["@nombre"].replace(/'/g, "\\'");
+
                 tracksHtml += `
-                    <div class="flex items-center justify-between p-3 bg-white border border-slate-50 rounded-xl mb-2 slope-item ${opacity}" data-name="${track["@nombre"].toLowerCase()}">
+                    <div onclick="openSlopeDetail('${safeName}')" class="cursor-pointer flex items-center justify-between p-3 bg-white border border-slate-50 rounded-xl mb-2 slope-item ${opacity} active:scale-95 transition-transform" data-name="${track["@nombre"].toLowerCase()}">
                         <div class="flex items-center gap-3">
                             <div class="w-3 h-3 rounded-full ${colorClass} shadow-sm shrink-0"></div>
                             <span class="font-bold text-slate-700 text-sm truncate max-w-[180px]">${track["@nombre"]}</span>
@@ -1655,6 +1679,73 @@ function renderSlopes(pistasData) {
 
     document.getElementById('slopes-total-status').innerText = `${totalOpen} / ${totalTotal} Abiertas`;
 }
+
+window.openSlopeDetail = (name) => {
+    const track = state.slopesMap[name];
+    if (!track) return;
+
+    const modal = document.getElementById('modal-slope-detail');
+    const card = document.getElementById('slope-modal-card');
+
+    modal.classList.remove('hidden');
+    // Simple animation delay
+    setTimeout(() => {
+        modal.classList.remove('opacity-0');
+        card.classList.remove('scale-95');
+        card.classList.add('scale-100');
+    }, 10);
+
+    // Populate Data
+    document.getElementById('slope-detail-name').innerText = track["@nombre"];
+    document.getElementById('slope-detail-zone').innerText = track.zona;
+
+    // Status
+    const stateRaw = (track["@estado"] || "").toString().toLowerCase();
+    const isOpen = stateRaw === 'true' || stateRaw === 'abierto' || stateRaw === 'parcial';
+
+    const statusEl = document.getElementById('slope-detail-status');
+    if (isOpen) {
+        statusEl.className = "inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-green-100 text-green-600 font-bold text-xs uppercase tracking-wider mb-8";
+        statusEl.innerHTML = `<span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span> Abierta`;
+    } else {
+        statusEl.className = "inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-red-100 text-red-500 font-bold text-xs uppercase tracking-wider mb-8";
+        statusEl.innerHTML = `<span class="w-2 h-2 rounded-full bg-red-500"></span> Cerrada`;
+    }
+
+    // Difficulty
+    const diff = (track["@dificultad"] || "").trim().toUpperCase();
+    let colorClass = 'bg-slate-400';
+    let diffText = 'Desconocida';
+    let diffColor = 'text-slate-400';
+
+    if (diff.includes('V')) { colorClass = 'bg-green-500'; diffText = 'Verde'; diffColor = 'text-green-500'; }
+    else if (diff.includes('A')) { colorClass = 'bg-blue-500'; diffText = 'Azul'; diffColor = 'text-blue-500'; }
+    else if (diff.includes('R')) { colorClass = 'bg-red-500'; diffText = 'Roja'; diffColor = 'text-red-500'; }
+    else if (diff.includes('N')) { colorClass = 'bg-black'; diffText = 'Negra'; diffColor = 'text-slate-900'; }
+    else if (diff.includes('S')) { colorClass = 'bg-orange-500'; diffText = 'Freestyle'; diffColor = 'text-orange-500'; }
+
+    const iconBox = document.getElementById('slope-detail-icon');
+    const iconColor = document.getElementById('slope-detail-color');
+    document.getElementById('slope-detail-diff').innerHTML = `<span class="${diffColor}">${diffText}</span>`;
+
+    // Icon styling
+    iconBox.className = `w-24 h-24 rounded-[2rem] bg-white shadow-xl mx-auto flex items-center justify-center text-4xl mb-6 relative ${diffColor}`;
+    iconColor.className = `absolute inset-0 rounded-[2rem] opacity-10 ${colorClass}`;
+
+};
+
+window.closeSlopeDetail = () => {
+    const modal = document.getElementById('modal-slope-detail');
+    const card = document.getElementById('slope-modal-card');
+
+    modal.classList.add('opacity-0');
+    card.classList.remove('scale-100');
+    card.classList.add('scale-95');
+
+    setTimeout(() => {
+        modal.classList.add('hidden');
+    }, 300);
+};
 
 window.filterSlopes = () => {
     const term = document.getElementById('slope-search').value.toLowerCase();

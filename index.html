@@ -134,32 +134,40 @@
 
                 <!-- Voice Chat Overlay -->
                 <div id="voice-overlay" class="hidden">
-                    <div class="voice-card">
+                    <div class="voice-card" id="voice-card-container">
                         <div class="voice-header" id="voice-header">
                             <div class="flex items-center gap-2">
-                                <div class="w-2 h-2 rounded-full bg-green-400 animate-pulse"></div>
-                                <span class="font-bold text-white text-sm tracking-wide">VOZ ACTIVA</span>
+                                <div class="w-2 h-2 rounded-full bg-orange-500 animate-pulse"></div>
+                                <span class="font-bold text-white text-sm tracking-wide">WALKIE TALKIE</span>
                             </div>
                             <button onclick="minimizeVoice()" class="text-slate-400 hover:text-white transition-colors">
                                 <i class="fa-solid fa-minus"></i>
                             </button>
                         </div>
 
-                        <div id="voice-list-container" class="voice-users-list no-scrollbar">
+                        <div id="voice-list-container" class="voice-users-list no-scrollbar mb-4">
                             <!-- Users injected here -->
-                            <!-- Example: -->
-                            <!--
-                            <div class="voice-user-row">
-                                <div class="user-avatar-voice">JD</div>
-                                <span class="text-slate-200 text-xs font-bold">John Doe</span>
-                            </div>
-                            -->
                         </div>
 
-                        <div id="voice-controls">
+                        <!-- PTT Button -->
+                        <div class="flex flex-col items-center justify-center gap-2 w-full">
+                            <button id="ptt-btn" onmousedown="startPTT(event)" onmouseup="stopPTT(event)"
+                                onmouseleave="stopPTT(event)" ontouchstart="startPTT(event)" ontouchend="stopPTT(event)"
+                                class="w-24 h-24 rounded-full bg-slate-700 p-2 shadow-inner border border-slate-600 active:scale-95 transition-all">
+                                <div id="ptt-btn-inner"
+                                    class="w-full h-full rounded-full bg-slate-600 flex items-center justify-center border-4 border-slate-700 shadow-2xl transition-all">
+                                    <i class="fa-solid fa-microphone text-3xl text-slate-300"></i>
+                                </div>
+                            </button>
+                            <p id="ptt-status"
+                                class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-2 animate-pulse">
+                                Mantén para hablar</p>
+                        </div>
+
+                        <div id="voice-controls" class="mt-4 pt-4 border-t border-white/10 w-full">
                             <div id="btn-leave-hold" class="btn-hold-leave">
                                 <span class="z-10 relative pointer-events-none"><i class="fa-solid fa-power-off"></i>
-                                    MANTÉN PARA SALIR</span>
+                                    APAGAR RADIO</span>
                                 <div class="hold-progress" id="leave-progress"></div>
                             </div>
                         </div>
@@ -671,4 +679,43 @@
     <script type="module" src="script.js"></script>
 </body>
 
-</html>
+</html>< ! - -   = = =   S L O P E   D E T A I L   M O D A L   = = =   - - >  
+ < d i v   i d = " m o d a l - s l o p e - d e t a i l "  
+         c l a s s = " h i d d e n   f i x e d   i n s e t - 0   z - [ 8 0 ]   b g - w h i t e / 6 0   b a c k d r o p - b l u r - m d   f l e x   f l e x - c o l   i t e m s - c e n t e r   j u s t i f y - c e n t e r   p - 6   a n i m a t e - f a d e - i n   o p a c i t y - 0   t r a n s i t i o n - o p a c i t y   d u r a t i o n - 3 0 0 " >  
+         < d i v   c l a s s = " w - f u l l   m a x - w - s m   b g - w h i t e   r o u n d e d - [ 2 . 5 r e m ]   p - 8   s h a d o w - 2 x l   s h a d o w - s l a t e - 2 0 0   b o r d e r   b o r d e r - s l a t e - 1 0 0   r e l a t i v e   o v e r f l o w - h i d d e n   t r a n s f o r m   s c a l e - 9 5   t r a n s i t i o n - t r a n s f o r m   d u r a t i o n - 3 0 0 "  
+                 i d = " s l o p e - m o d a l - c a r d " >  
+  
+                 < b u t t o n   o n c l i c k = " c l o s e S l o p e D e t a i l ( ) "  
+                         c l a s s = " a b s o l u t e   t o p - 6   r i g h t - 6   w - 1 0   h - 1 0   r o u n d e d - f u l l   b g - s l a t e - 5 0   t e x t - s l a t e - 4 0 0   f l e x   i t e m s - c e n t e r   j u s t i f y - c e n t e r   h o v e r : b g - s l a t e - 1 0 0   h o v e r : t e x t - s l a t e - 9 0 0   t r a n s i t i o n   b t n - p r e s s   z - 2 0 " >  
+                         < i   c l a s s = " f a - s o l i d   f a - x m a r k " > < / i >  
+                 < / b u t t o n >  
+  
+                 < d i v   c l a s s = " a b s o l u t e   t o p - 0   l e f t - 0   w - f u l l   h - 3 2   b g - g r a d i e n t - t o - b r   f r o m - s l a t e - 1 0 0   t o - s l a t e - 5 0   z - 0 " > < / d i v >  
+  
+                 < d i v   c l a s s = " r e l a t i v e   z - 1 0   p t - 8   t e x t - c e n t e r " >  
+                         < d i v   i d = " s l o p e - d e t a i l - i c o n "  
+                                 c l a s s = " w - 2 4   h - 2 4   r o u n d e d - [ 2 r e m ]   b g - w h i t e   s h a d o w - x l   m x - a u t o   f l e x   i t e m s - c e n t e r   j u s t i f y - c e n t e r   t e x t - 4 x l   m b - 6   r e l a t i v e " >  
+                                 < i   c l a s s = " f a - s o l i d   f a - p e r s o n - s k i i n g " > < / i >  
+                                 < d i v   i d = " s l o p e - d e t a i l - c o l o r "   c l a s s = " a b s o l u t e   i n s e t - 0   r o u n d e d - [ 2 r e m ]   o p a c i t y - 2 0 " > < / d i v >  
+                         < / d i v >  
+  
+                         < h 2   i d = " s l o p e - d e t a i l - n a m e "   c l a s s = " t e x t - 3 x l   f o n t - b l a c k   t e x t - s l a t e - 9 0 0   l e a d i n g - t i g h t   m b - 2 " > N o m b r e   P i s t a < / h 2 >  
+                         < d i v   i d = " s l o p e - d e t a i l - s t a t u s "  
+                                 c l a s s = " i n l i n e - f l e x   i t e m s - c e n t e r   g a p - 2   p x - 4   p y - 1 . 5   r o u n d e d - f u l l   b g - s l a t e - 1 0 0   t e x t - s l a t e - 5 0 0   f o n t - b o l d   t e x t - x s   u p p e r c a s e   t r a c k i n g - w i d e r   m b - 8 " >  
+                                 < s p a n   c l a s s = " w - 2   h - 2   r o u n d e d - f u l l   b g - s l a t e - 4 0 0 " > < / s p a n >   C e r r a d a  
+                         < / d i v >  
+  
+                         < d i v   c l a s s = " g r i d   g r i d - c o l s - 2   g a p - 4 " >  
+                                 < d i v   c l a s s = " b g - s l a t e - 5 0   p - 4   r o u n d e d - 2 x l   b o r d e r   b o r d e r - s l a t e - 1 0 0 " >  
+                                         < p   c l a s s = " t e x t - [ 1 0 p x ]   f o n t - b o l d   t e x t - s l a t e - 4 0 0   u p p e r c a s e   t r a c k i n g - w i d e s t   m b - 1 " > D I F I C U L T A D < / p >  
+                                         < p   i d = " s l o p e - d e t a i l - d i f f "   c l a s s = " f o n t - b l a c k   t e x t - s l a t e - 8 0 0   t e x t - l g " > - - < / p >  
+                                 < / d i v >  
+                                 < d i v   c l a s s = " b g - s l a t e - 5 0   p - 4   r o u n d e d - 2 x l   b o r d e r   b o r d e r - s l a t e - 1 0 0 " >  
+                                         < p   c l a s s = " t e x t - [ 1 0 p x ]   f o n t - b o l d   t e x t - s l a t e - 4 0 0   u p p e r c a s e   t r a c k i n g - w i d e s t   m b - 1 " > Z O N A < / p >  
+                                         < p   i d = " s l o p e - d e t a i l - z o n e "   c l a s s = " f o n t - b l a c k   t e x t - s l a t e - 8 0 0   t e x t - l g " > - - < / p >  
+                                 < / d i v >  
+                         < / d i v >  
+                 < / d i v >  
+         < / d i v >  
+ < / d i v >  
+ 
