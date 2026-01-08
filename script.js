@@ -1148,17 +1148,15 @@ function calcTotalDist(pts) {
 }
 
 // --- OPEN MIC (STREAMING) SYSTEM ---
-// Protocol: Stream over Firestore (Pseudo Real-Time)
+// Protocol: WebSocket Repeater (as per README.md)
 
 state.voiceChat = {
     active: false,
     micOpen: false,
     recorder: null,
-    chunks: [],
-    unsubMessages: null,
-    unsubPresence: null,
-    audioQueue: [],
-    isPlaying: false
+    ws: null,
+    audioContext: null,
+    nextPlayTime: 0
 };
 
 window.toggleGlobalVoice = async () => {
@@ -1182,26 +1180,69 @@ async function initVoiceConnection() {
     initDraggable('voice-overlay', 'voice-header');
     initHoldToLeave();
 
-    joinVoicePresence();
-    listenForMessages();
+    // Init AudioContext
+    if (!state.voiceChat.audioContext) {
+        state.voiceChat.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (state.voiceChat.audioContext.state === 'suspended') {
+        await state.voiceChat.audioContext.resume();
+    }
 
-    // Auto-Start Mic (Always On)
+    // Connect WebSocket
+    connectWebSocket();
+
+    // Auto-Start Mic
     setMicState(true);
 
-    processVoiceSystemMessage("Canal de Voz Abierto");
+    processVoiceSystemMessage("Radio conectada");
+}
+
+function connectWebSocket() {
+    const wsUrl = "wss://audioservice.arielcapdevila.com";
+    console.log("Connecting to WS:", wsUrl);
+
+    state.voiceChat.ws = new WebSocket(wsUrl);
+    state.voiceChat.ws.binaryType = 'arraybuffer';
+
+    state.voiceChat.ws.onopen = () => {
+        console.log("WS Connected");
+        renderVoiceStatus("CONECTADO", "text-green-400");
+    };
+
+    state.voiceChat.ws.onclose = () => {
+        console.log("WS Disconnected");
+        if (state.voiceChat.active) {
+            renderVoiceStatus("RECONECTANDO...", "text-yellow-400");
+            setTimeout(connectWebSocket, 3000);
+        }
+    };
+
+    state.voiceChat.ws.onerror = (e) => {
+        console.error("WS Error", e);
+    };
+
+    state.voiceChat.ws.onmessage = async (event) => {
+        if (event.data instanceof ArrayBuffer) {
+            playAudioChunk(event.data);
+        }
+    };
 }
 
 function leaveVoiceChat() {
     state.voiceChat.active = false;
-    setMicState(false); // Stop recorder
+    setMicState(false);
 
-    if (state.voiceChat.unsubMessages) state.voiceChat.unsubMessages();
-    if (state.voiceChat.unsubPresence) state.voiceChat.unsubPresence();
+    if (state.voiceChat.ws) {
+        state.voiceChat.ws.onclose = null; // Prevent reconnect
+        state.voiceChat.ws.close();
+        state.voiceChat.ws = null;
+    }
 
-    // Remove presence
-    try {
-        if (state.user) deleteDoc(doc(db, "voice_presence", state.user.uid));
-    } catch (e) { }
+    if (state.voiceChat.audioContext) {
+        state.voiceChat.audioContext.close();
+        state.voiceChat.audioContext = null;
+    }
+    state.voiceChat.nextPlayTime = 0;
 
     // UI Reset
     const btn = document.getElementById('btn-global-voice');
@@ -1211,155 +1252,65 @@ function leaveVoiceChat() {
         btn.innerHTML = '<i class="fa-solid fa-microphone-slash"></i>';
     }
     document.getElementById('voice-overlay').classList.add('hidden');
+
+    // Clear user list (this protocol doesn't support user list yet)
+    const list = document.getElementById('voice-list-container');
+    if (list) list.innerHTML = '<div class="text-xs text-slate-500 text-center py-2">Radio Activa</div>';
+
     processVoiceSystemMessage("Radio desconectada");
 }
 
-async function joinVoicePresence() {
-    if (!state.user) return;
-    const ref = doc(db, "voice_presence", state.user.uid);
-    await setDoc(ref, {
-        username: state.userData.username,
-        onlineAt: serverTimestamp(),
-        uid: state.user.uid
-    });
+async function playAudioChunk(arrayBuffer) {
+    if (!state.voiceChat.audioContext) return;
+    const ctx = state.voiceChat.audioContext;
 
-    state.voiceChat.unsubPresence = onSnapshot(collection(db, "voice_presence"), (snap) => {
-        const users = snap.docs.map(d => d.data());
-        renderVoiceUsers(users);
-    });
-}
+    try {
+        // Decode
+        const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
 
-function renderVoiceUsers(users) {
-    const list = document.getElementById('voice-list-container');
-    if (!list) return;
-    list.innerHTML = '';
+        // Schedule
+        const source = ctx.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(ctx.destination);
 
-    users.sort((a, b) => (a.uid === state.user.uid ? -1 : 1));
-
-    if (users.length === 0) {
-        list.innerHTML = '<div class="text-xs text-slate-500 text-center py-2">Canal Vacío</div>';
-        return;
-    }
-
-    users.forEach(u => {
-        const el = document.createElement('div');
-        el.className = "flex items-center gap-2 mb-2 animate-slide-up";
-        const isMe = u.uid === state.user.uid;
-        el.innerHTML = `
-            <div class="w-2 h-2 rounded-full ${isMe ? 'bg-green-400' : 'bg-blue-400'} shadow-[0_0_5px_rgba(34,197,94,0.5)]"></div>
-            <span class="${isMe ? 'text-white' : 'text-slate-300'} text-xs font-bold truncate">${u.username} ${isMe ? '(Tú)' : ''}</span>
-         `;
-        list.appendChild(el);
-    });
-}
-
-function listenForMessages() {
-    // Increase limit to handle bursts
-    const q = query(
-        collection(db, "voice_stream"),
-        orderBy('ts', 'desc'),
-        limit(20)
-    );
-
-    let initialLoad = true;
-
-    // Ensure we don't have multiple listeners
-    if (state.voiceChat.unsubMessages) {
-        state.voiceChat.unsubMessages();
-    }
-
-    state.voiceChat.unsubMessages = onSnapshot(q, (snap) => {
-        if (initialLoad) {
-            initialLoad = false;
-            // Mark existing as processed so we don't play them if they reappear (unlikely with stream)
-            snap.docs.forEach(d => state.voiceChat.processedIds.add(d.id));
-            return;
+        // Simple jitter buffer logic
+        const now = ctx.currentTime;
+        // If next time is in past, reset to now (plus a tiny buffer)
+        if (state.voiceChat.nextPlayTime < now) {
+            state.voiceChat.nextPlayTime = now + 0.1;
         }
 
-        const newChunks = [];
+        source.start(state.voiceChat.nextPlayTime);
+        state.voiceChat.nextPlayTime += audioBuffer.duration;
 
-        snap.docChanges().forEach(change => {
-            if (change.type === 'added') {
-                const d = change.doc.data();
-                const id = change.doc.id;
-
-                // Dedup and Self-Filter
-                if (state.voiceChat.processedIds.has(id)) return;
-                if (d.uid === state.user.uid) return;
-
-                state.voiceChat.processedIds.add(id);
-
-                // Add to batch for sorting
-                newChunks.push({
-                    data: d,
-                    ts: d.ts?.seconds || 0 // Handle timestamp safely
-                });
-            }
-        });
-
-        // CRITICAL: Sort by Timestamp ASCENDING to fix "Reverse Speech"
-        // The query is DESC (for latest), but we must play oldest->newest
-        newChunks.sort((a, b) => a.ts - b.ts);
-
-        newChunks.forEach(item => {
-            queueAudio(item.data.audio, item.data.sender);
-        });
-    });
-}
-
-function queueAudio(base64, sender) {
-    // Basic validation
-    if (!base64) return;
-
-    const audio = new Audio(base64);
-    audio.senderName = sender;
-    state.voiceChat.audioQueue.push(audio);
-    processQueue();
-}
-
-function processQueue() {
-    if (state.voiceChat.isPlaying || state.voiceChat.audioQueue.length === 0) return;
-
-    state.voiceChat.isPlaying = true;
-    const audio = state.voiceChat.audioQueue.shift();
-
-    // UI: Who is talking
-    const status = document.getElementById('mic-status');
-    const originalText = status ? status.innerText : "";
-
-    // Only update status if it's not "TRANSMITIENDO" (me)
-    if (status && !state.voiceChat.micOpen) {
-        status.innerText = `${audio.senderName} HABLANDO...`;
-        status.classList.add('text-blue-400', 'animate-pulse');
-    }
-
-    audio.play()
-        .then(() => {
-            audio.onended = () => {
-                state.voiceChat.isPlaying = false;
-
-                // Reset UI if queue empty and not me
-                if (status && !state.voiceChat.micOpen && state.voiceChat.audioQueue.length === 0) {
+        // Visual Feedback
+        const status = document.getElementById('mic-status');
+        if (status && !state.voiceChat.micOpen) {
+            status.innerText = "RECIBIENDO...";
+            status.classList.add('text-blue-400', 'animate-pulse');
+            setTimeout(() => {
+                if (!state.voiceChat.micOpen && status) {
                     status.innerText = "CANAL ABIERTO";
                     status.classList.remove('text-blue-400', 'animate-pulse');
                 }
+            }, audioBuffer.duration * 1000);
+        }
 
-                processQueue();
-            };
-        })
-        .catch(e => {
-            console.error("Playback Error", e);
-            state.voiceChat.isPlaying = false;
-            processQueue();
-        });
+    } catch (e) {
+        console.warn("Audio decode error (normal for partial chunks or connection noise)", e);
+    }
 }
 
-// --- PTT LOGIC ---
+function renderVoiceStatus(msg, colorClass) {
+    const list = document.getElementById('voice-list-container');
+    if (list) {
+        list.innerHTML = `<div class="text-xs font-bold ${colorClass} text-center py-2 border border-slate-700 bg-slate-800 rounded mb-2">${msg}</div>`;
+    }
+}
+
 // --- OPEN MIC LOGIC ---
 window.toggleMic = async () => {
     if (!state.voiceChat.active) return;
-
-    // Toggle
     const newState = !state.voiceChat.micOpen;
     await setMicState(newState);
 };
@@ -1372,19 +1323,23 @@ async function setMicState(isOpen) {
     const wave = document.getElementById('mic-wave');
 
     if (isOpen) {
-        // Start Recording
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            // Timeslice 1000ms for continuous streaming (1s latency)
+
+            // Start Recorder with small slices for low latency
+            // Using Opus (default)
             state.voiceChat.recorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
 
             state.voiceChat.recorder.ondataavailable = async (e) => {
-                if (e.data.size > 0 && state.voiceChat.active && state.voiceChat.micOpen) {
-                    uploadAudioChunk(e.data);
+                if (e.data.size > 0 && state.voiceChat.ws && state.voiceChat.ws.readyState === WebSocket.OPEN) {
+                    // Send raw blob bytes
+                    const buffer = await e.data.arrayBuffer();
+                    state.voiceChat.ws.send(buffer);
                 }
             };
 
-            state.voiceChat.recorder.start(500);
+            // Start with 250ms chunks (balance between latency and overhead)
+            state.voiceChat.recorder.start(250);
 
             // UI ON
             if (btnInner) {
@@ -1393,30 +1348,24 @@ async function setMicState(isOpen) {
             }
             if (icon) icon.className = "fa-solid fa-microphone text-3xl text-white relative z-10";
             if (status) {
-                status.innerText = "TRANSMITIENDO VIVO";
+                status.innerText = "TRANSMITIENDO";
                 status.classList.add('text-green-400', 'animate-pulse');
             }
             if (wave) {
                 wave.classList.remove('opacity-0');
                 wave.classList.add('opacity-50', 'animate-pulse');
             }
-
             playTone(800, 0.1, 'sine');
 
         } catch (e) {
             console.error(e);
-            alert("Error al abrir micrófono. Verifica permisos.");
+            alert("Error al abrir micrófono");
             setMicState(false);
         }
-
     } else {
-        // Stop Recording
         if (state.voiceChat.recorder && state.voiceChat.recorder.state !== 'inactive') {
-            try {
-                // Ensure tracks are stopped
-                state.voiceChat.recorder.stream.getTracks().forEach(t => t.stop());
-                state.voiceChat.recorder.stop();
-            } catch (e) { }
+            state.voiceChat.recorder.stop();
+            state.voiceChat.recorder.stream.getTracks().forEach(t => t.stop());
             state.voiceChat.recorder = null;
         }
 
@@ -1434,25 +1383,8 @@ async function setMicState(isOpen) {
             wave.classList.add('opacity-0');
             wave.classList.remove('opacity-50', 'animate-pulse');
         }
-
         playTone(600, 0.1, 'sine');
     }
-}
-
-async function uploadAudioChunk(blob) {
-    const reader = new FileReader();
-    reader.readAsDataURL(blob);
-    reader.onloadend = async () => {
-        const base64 = reader.result;
-        // Fire and forget upload to Reduce Latency
-        addDoc(collection(db, "voice_stream"), {
-            sender: state.userData.username,
-            uid: state.user.uid,
-            audio: base64,
-            ts: serverTimestamp(),
-            expireAt: Date.now() + 60000
-        }).catch(e => console.error(e));
-    };
 }
 
 // (Duplicate logic removed)
